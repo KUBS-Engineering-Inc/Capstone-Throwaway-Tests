@@ -1,7 +1,7 @@
 [project]
 name = "extract-frames"
 version = "0.1.0"
-description = "Add your description here"
+description = "Extract frames from ultrasound videos"
 readme = "README.md"
 authors = [
     { name = "BaoGeist", email = "linofbaoze@outlook.com" }
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-extract-frames = "extract_frames:main"
+extract-frames = "extract_frames.main:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

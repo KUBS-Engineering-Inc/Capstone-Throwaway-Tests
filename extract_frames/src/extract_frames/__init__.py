@@ -1,2 +1,2 @@
-def main() -> None:
-    print("Hello from extract-frames!")
+"""Extract frames from ultrasound videos."""
+from .main import run

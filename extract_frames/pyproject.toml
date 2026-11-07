@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "BaoGeist", email = "linofbaoze@outlook.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
     "opencv-python>=5.0.0.93",
 ]
@@ -15,5 +15,5 @@ dependencies = [
 extract-frames = "extract_frames.main:main"
 
 [build-system]
-requires = ["uv_build>=0.13.6,<0.14.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

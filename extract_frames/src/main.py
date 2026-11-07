@@ -1,7 +1,7 @@
 """Extract frames from video files into individual images using OpenCV.
 
 Usage:
-    extract-frames [INPUT] [OUTPUT] [--every N] [--fps F] [--ext jpg|png]
+    python extract_frames/src/main.py [INPUT] [OUTPUT] [--every N] [--fps F] [--ext jpg|png]
 
 INPUT is a video file or a directory of videos (default: input/).
 OUTPUT is a directory (default: output/). Frames from each video go to
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import cv2
 
-STAGE_DIR = Path(__file__).resolve().parents[2]  # src/extract_frames/main.py -> extract_frames/
+STAGE_DIR = Path(__file__).resolve().parents[1]  # src/main.py -> extract_frames/
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv"}
 
 

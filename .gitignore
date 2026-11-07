@@ -6,5 +6,3 @@ frames/
 *.avi
 *.mkv
 output/
-*.egg-info/
-build/

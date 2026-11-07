@@ -3,6 +3,3 @@
 #   python3.14 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 numpy==2.5.4
 opencv-python==5.0.0.93
-
-# Pipeline stages, installed editable so code changes take effect without reinstalling.
--e ./extract_frames

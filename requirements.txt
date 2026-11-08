@@ -6,3 +6,4 @@ opencv-python==5.0.0.93
 
 # Pipeline stages, installed editable so code changes take effect without reinstalling.
 -e ./extract_frames
+-e ./harness

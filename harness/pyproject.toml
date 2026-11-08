@@ -1,0 +1,17 @@
+[project]
+name = "harness"
+version = "0.1.0"
+description = "Run pipeline stages as a DAG, cache their outputs, and compare runs"
+readme = "README.md"
+authors = [
+    { name = "BaoGeist", email = "linofbaoze@outlook.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+harness = "harness.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

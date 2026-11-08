@@ -1,0 +1,5 @@
+# Shared environment for every stage. Pin exact versions here; everyone uses this file.
+# Requires Python 3.14 (see .python-version).
+#   python3.14 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+numpy==2.5.4
+opencv-python==5.0.0.93

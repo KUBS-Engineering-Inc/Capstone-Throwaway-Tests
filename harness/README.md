@@ -1,7 +1,7 @@
 # harness
 
-Runs the pipeline stages as a DAG defined in Python, caches each stage's output,
-and compares every run against a baseline (and stages against each other).
+Runs the pipeline stages as a DAG defined in Python and compares each run
+against a baseline.
 
 ## Usage
 
@@ -9,21 +9,17 @@ and compares every run against a baseline (and stages against each other).
 source .venv/bin/activate                                       # from the repo root
 python harness/src/main.py run harness/pipelines/vessels.py     # run + compare to "baseline" if set
 python harness/src/main.py baseline <run_id>                    # make a run the baseline
-python harness/src/main.py runs                                 # list runs
 python harness/src/main.py order harness/pipelines/vessels.py   # list stages in run order
 ```
 
-Useful flags for `run`: `--run-id NAME`, `--only NODE ...` (plus its
-upstream nodes), `--no-cache`, `--compare-to RUN_OR_BASELINE`, `--fail-on-diff`.
+Flags for `run`: `--run-id NAME`, `--compare-to RUN_OR_BASELINE`, `--fail-on-diff`.
 Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `--fail-on-diff`).
 
 Each run writes `harness/output/runs/<run_id>/`:
 - `<node>/output/` — what the stage wrote; `<node>/log.txt` — what it printed
-- `report.md` — status, timings, baseline comparison, A/B results
-- `manifest.json` — the same, machine-readable
+- `report.md` — status, timings, failures, baseline comparison
 
-A node only re-runs when its code, params or inputs change; everything
-downstream of a change re-runs, nothing else does.
+Every run re-runs every stage. If a stage fails, the stages downstream of it are skipped.
 
 ## Adding a stage (contract)
 
@@ -58,5 +54,6 @@ downstream of a change re-runs, nothing else does.
 - `files_diff(pattern="**/*")` — files compared by name and content hash.
 - Your own: any function `(current_dir, other_dir) -> Comparison(ok, summary, details)`.
 
-Use one as a node's `compare=` (vs the baseline), or `p.ab(node_a, node_b, comparator)`
-to compare two versions of a stage in the same run.
+Use one as a node's `compare=` to check it against the baseline. To compare two
+versions of a stage, add both as nodes (e.g. with different `params`), or run one,
+make it the baseline, and run the other.

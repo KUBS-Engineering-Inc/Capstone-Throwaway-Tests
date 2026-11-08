@@ -1,13 +1,13 @@
 """Comparators: functions (current_dir, other_dir) -> Comparison.
 
-Use them as a node's `compare=` (current run vs baseline) or in Pipeline.ab()
-(node A vs node B in the same run). Write your own with the same signature.
+Use one as a node's `compare=` (current run vs baseline). Write your own with
+the same signature.
 """
 import csv
 import hashlib
 import math
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -16,9 +16,6 @@ class Comparison:
     ok: bool
     summary: str
     details: list = field(default_factory=list)
-
-    def to_dict(self):
-        return asdict(self)
 
 
 def csv_diff(filename, key, columns=None, tolerance=0.0):

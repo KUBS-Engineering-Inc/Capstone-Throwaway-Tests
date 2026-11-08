@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]  # repo root
 
 extract_frames = load_stage("extract_frames")
 classify_view = load_stage("classify_view")
+detect_circular_vessels = load_stage("detect_circular_vessels")
 
 pipeline = p = Pipeline("vessels")
 
@@ -35,4 +36,18 @@ views = p.node(
     "classify_view", classify_view.run,
     inputs=[ROOT / "data/classify_view/input"],
     compare=csv_diff("views.csv", key="image", tolerance=0.01),
+)
+
+vessels = p.node(
+    "detect_circular_vessels", detect_circular_vessels.run,
+    inputs=[ROOT / "data/detect_circular_vessels/input"],
+    compare=csv_diff("detections.csv", key="image", tolerance=0.5),
+)
+
+# Same stage with the Hough-circle method, kept for comparison with the default.
+vessels_hough = p.node(
+    "detect_circular_vessels_hough", detect_circular_vessels.run,
+    inputs=[ROOT / "data/detect_circular_vessels/input"],
+    params={"method": "hough"},
+    compare=csv_diff("detections.csv", key="image", tolerance=0.5),
 )

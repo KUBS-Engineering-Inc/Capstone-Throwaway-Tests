@@ -1,10 +1,10 @@
 """Extract frames from video files into individual images using OpenCV.
 
 Usage:
-    python extract_frames/src/main.py [INPUT] [OUTPUT] [--every N] [--fps F] [--ext jpg|png]
+    python modules/extract_frames/src/main.py [INPUT] [OUTPUT] [--every N] [--fps F] [--ext jpg|png]
 
-INPUT is a video file or a directory of videos (default: input/).
-OUTPUT is a directory (default: output/). Frames from each video go to
+INPUT is a video file or a directory of videos (default: data/extract_frames/input/).
+OUTPUT is a directory (default: data/extract_frames/output/). Frames from each video go to
 OUTPUT/<video name>/, e.g.
 input/recording_oct_5.mp4 -> output/recording_oct_5/frame_000000.jpg
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import cv2
 
-STAGE_DIR = Path(__file__).resolve().parents[1]  # src/main.py -> extract_frames/
+DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "extract_frames"  # modules/extract_frames/src/main.py -> repo root
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
@@ -63,8 +63,8 @@ def run(input, output, every=1, fps=None, ext="jpg"):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("input", nargs="?", default=STAGE_DIR / "input", help="video file or directory of videos (default: input/)")
-    p.add_argument("output", nargs="?", default=STAGE_DIR / "output", help="output directory (default: output/)")
+    p.add_argument("input", nargs="?", default=DATA_DIR / "input", help="video file or directory of videos (default: data/extract_frames/input/)")
+    p.add_argument("output", nargs="?", default=DATA_DIR / "output", help="output directory (default: data/extract_frames/output/)")
     p.add_argument("--every", type=int, default=1, help="save every Nth frame (default: 1)")
     p.add_argument("--fps", type=float, help="target frames per second to save (overrides --every)")
     p.add_argument("--ext", default="jpg", choices=["jpg", "png"], help="image format")

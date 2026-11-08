@@ -35,7 +35,7 @@ from typing import Any, Callable
 
 from compare import Comparison
 
-REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/pipeline.py -> repo root
+REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/dag.py -> repo root
 MODULES_DIR = REPO_ROOT / "modules"
 
 

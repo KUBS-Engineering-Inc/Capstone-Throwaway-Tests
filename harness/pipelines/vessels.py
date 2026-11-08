@@ -10,7 +10,7 @@ upstream nodes as `inputs`. List the run order with:
 from pathlib import Path
 
 from compare import files_diff
-from pipeline import Pipeline, load_stage
+from dag import Pipeline, load_stage
 
 ROOT = Path(__file__).resolve().parents[2]  # repo root
 

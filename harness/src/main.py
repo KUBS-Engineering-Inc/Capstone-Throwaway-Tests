@@ -17,7 +17,7 @@ import json
 import runpy
 from pathlib import Path
 
-from pipeline import Pipeline, set_baseline
+from dag import Pipeline, set_baseline
 
 HARNESS_DIR = Path(__file__).resolve().parents[1]  # src/main.py -> harness/
 DEFAULT_OUT = HARNESS_DIR / "output"

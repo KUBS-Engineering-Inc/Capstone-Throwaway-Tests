@@ -1,7 +1,15 @@
+import re
+
 import pytesseract
 
-from config import FOOTER_ROI
+from config import DEPTH_LABEL_ROI, FOOTER_ROI
 from image_utils import crop, prep_light_on_dark
+
+
+DEPTH_LABEL_PATTERN = re.compile(
+    r"\bdepth\s*:?\s*(\d+(?:[.,]\d+)?)\s*cm\b",
+    re.IGNORECASE,
+)
 
 
 def determine_mode(frame):
@@ -32,3 +40,25 @@ def determine_mode(frame):
         return "m_mode"
     print("[determine_mode] Neither 'spectral' nor 'm-mode' matched; selecting B-only mode.")
     return "b_only"
+
+
+def determine_b_mode_depth_cm(frame):
+    """Read the displayed B-mode depth in centimeters from the side panel."""
+    depth_roi = crop(frame, DEPTH_LABEL_ROI)
+    prepared_depth = prep_light_on_dark(depth_roi)
+    text = pytesseract.image_to_string(
+        prepared_depth,
+        config="--oem 3 --psm 6",
+    )
+    print(f"[determine_b_mode_depth_cm] OCR text: {text!r}.")
+
+    match = DEPTH_LABEL_PATTERN.search(text)
+    if match is None:
+        raise RuntimeError("Could not read a 'Depth <number> cm' label from the B-mode.")
+
+    depth_cm = float(match.group(1).replace(",", "."))
+    if depth_cm <= 0:
+        raise RuntimeError(f"OCR returned non-positive B-mode depth {depth_cm} cm from {text!r}.")
+
+    print(f"[determine_b_mode_depth_cm] Parsed displayed B-mode depth: {depth_cm:g} cm.")
+    return depth_cm

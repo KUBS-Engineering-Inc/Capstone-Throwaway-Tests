@@ -38,11 +38,12 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 WORK_SIZE = 300  # images are resized so their shorter side is this many px
 THRESHOLDS = range(10, 95, 5)
 
-# Defaults for run() and the command line.
+# Settings used by run(). The command-line flags override them.
 METHOD = "contour"       # "contour" (threshold sweep) or "hough" (cv2.HoughCircles)
 MIN_CIRCULARITY = 0.75   # convex-hull circularity, 0..1
 MIN_ASPECT = 0.4         # ellipse minor/major axis ratio
 MIN_CONTRAST = 30        # wall minus lumen brightness, 0..255
+SHOW = False             # also display each overlay in a window
 
 
 def clean_view(bgr):
@@ -245,14 +246,14 @@ def list_images(path):
     raise FileNotFoundError(f"Input not found: {path}")
 
 
-def run(input, output, method=METHOD, min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT,
-        min_contrast=MIN_CONTRAST, show=False):
+def run(input, output):
     """Detect circular vessels in every image under `input`; write overlays and
-    detections.csv to `output`. Returns the number of images with a detection."""
+    detections.csv to `output`, using the settings at the top of this file.
+    Returns the number of images with a detection."""
     images = list_images(input)
     out_dir = Path(output)
     out_dir.mkdir(parents=True, exist_ok=True)
-    thresholds = dict(min_circularity=min_circularity, min_aspect=min_aspect, min_contrast=min_contrast)
+    thresholds = dict(min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_contrast=MIN_CONTRAST)
     fields = ["image", "cx", "cy", "radius", "major", "minor", "circularity", "aspect", "contrast", "color_flow", "score"]
 
     hits = 0
@@ -264,23 +265,24 @@ def run(input, output, method=METHOD, min_circularity=MIN_CIRCULARITY, min_aspec
             if image is None:
                 print(f"Skipping unreadable image: {img_path}")
                 continue
-            dets = detect(image, method, **thresholds)
+            dets = detect(image, METHOD, **thresholds)
             for d in dets:
                 writer.writerow({"image": img_path.name, **d})
             hits += bool(dets)
             print(f"{img_path.name}: {len(dets)} circular vessel(s)")
             annotated = annotate(image, dets)
             cv2.imwrite(str(out_dir / img_path.name), annotated)
-            if show and not show_image(f"{img_path.name}: {len(dets)} vessel(s)", annotated):
+            if SHOW and not show_image(f"{img_path.name}: {len(dets)} vessel(s)", annotated):
                 break
 
-    if show:
+    if SHOW:
         cv2.destroyAllWindows()
     print(f"Done: {hits} of {len(images)} image(s) had circular vessels -> {out_dir}/")
     return hits
 
 
 def main():
+    global METHOD, MIN_CIRCULARITY, MIN_ASPECT, MIN_CONTRAST, SHOW
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("input", nargs="?", default=DATA_DIR / "input",
                    help="image file or directory of images, cropped to the B-mode view (default: data/detect_circular_vessels/input/)")
@@ -295,8 +297,9 @@ def main():
                    help=f"wall minus lumen brightness, 0..255 (default: {MIN_CONTRAST})")
     p.add_argument("--show", action="store_true", help="display each annotated result in a window")
     a = p.parse_args()
-    run(a.input, a.output, method=a.method, min_circularity=a.min_circularity,
-        min_aspect=a.min_aspect, min_contrast=a.min_contrast, show=a.show)
+    METHOD, MIN_CIRCULARITY, MIN_ASPECT, MIN_CONTRAST, SHOW = (
+        a.method, a.min_circularity, a.min_aspect, a.min_contrast, a.show)
+    run(a.input, a.output)
 
 
 if __name__ == "__main__":

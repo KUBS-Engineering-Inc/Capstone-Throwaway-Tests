@@ -6,5 +6,6 @@ frames/
 *.avi
 *.mkv
 .DS_Store
-output/
 input_videos/
+
+measure_diameter/previews/

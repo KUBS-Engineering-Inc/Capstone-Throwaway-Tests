@@ -8,6 +8,3 @@ frames/
 .DS_Store
 output/
 input_videos/
-
-# segment_windows
-segment_windows/testing

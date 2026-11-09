@@ -1,33 +1,38 @@
 from pathlib import Path
-
-# --- File Paths ---
-# Resolves to the directory containing config.py (e.g., the segment_windows folder)
 BASE_DIR = Path(__file__).resolve().parent
-
-# Defines the assets folder path. Change "assets" here if the folder name changes in the future.
 ASSETS_DIR = BASE_DIR / "assets"
+OUTPUT_DIR = BASE_DIR / "output"
 
-# Reference dimensions for dynamic scaling
-REF_W, REF_H = 1024, 768
+# These fixed coordinates are based on the expected screenshot dimensions.
+# Coordinates are written as (left, top, right, bottom)
+FRAME_WIDTH = 1024
+FRAME_HEIGHT = 768
 
-# Tesseract upscaling factor for better OCR accuracy
-UPSCALE = 3
+# OCR reads the footer to identify the active mode.
+FOOTER_ROI = (600, 650, 900, 680)
 
-# Regions of interest defined on the 1024x768 reference frame (x0, y0, x1, y1)
-ROIS = {
-    "header":        (0,   0,   1024, 45),
-    "params":        (745, 40,  900,  350),   # MI, Depth, SV size, Angle, ...
-    "depth_scale":   (705, 35,  742,  350),   # cyan 0-4 numbers (B-mode depth, cm)
-    "depth_scale_b_only":   (705, 35,  742,  640),   # full screen bmode scale
-    "velocity_axis": (28,  350, 68,   640),   # -180 ... 60 (cm/s)
-    "footer":        (600, 650, 900,  680),
-}
+# Bounds of the visible spectral plotting area in the sample frames. The box
+# includes its border and excludes the velocity labels to the left of the plot.
+SPECTRAL_WINDOW = (74, 355, 753, 642)
 
-# Static window coordinates for OpenCV extraction
-B_MODE_Y_TOP = 54
-B_MODE_Y_BOTTOM_SPLIT = 440
-B_MODE_Y_BOTTOM_FULL = 830
-BOTTOM_WINDOW = {'x1': 72, 'y1': 355, 'x2': 760, 'y2': 640}
+# Fixed vertical bounds follow the top and bottom depth-scale ticks. The bottom
+# tick is at a different row in split and B-only layouts.
+B_MODE_TOP_TICK = 50
+B_MODE_SPLIT_BOTTOM_TICK = 338
+B_MODE_FULL_BOTTOM_TICK = 632
 
-CONTOUR_THRESH = 15
+# Search for B-mode between the scale and the ultrasound area, including the
+# full scale tick length (through x=759) but stopping before parameter text.
+B_MODE_SEARCH_LEFT = 80
+B_MODE_SEARCH_TOP = B_MODE_TOP_TICK
+B_MODE_SEARCH_RIGHT = 760
+B_MODE_SPLIT_BOTTOM = B_MODE_SPLIT_BOTTOM_TICK + 1
+B_MODE_FULL_BOTTOM = B_MODE_FULL_BOTTOM_TICK + 1
 
+# TUNABLE: OCR works on small text more reliably when its input is enlarged.
+OCR_UPSCALE = 3
+
+# TUNABLE: Grayscale pixels strictly brighter than this cutoff become white for contour detection; darker pixels become black.
+CONTOUR_THRESHOLD = 15
+
+# Both tunable values are worth experimenting with in the future. The current values work for the sample frames.

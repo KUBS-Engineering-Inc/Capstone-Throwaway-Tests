@@ -1,82 +1,106 @@
-# main.py
 import argparse
 
 import cv2
-from pathlib import Path
-from config import ASSETS_DIR
-from ocr_engine import determine_mode, ocr_words, fit_axis
+
+from config import (
+    ASSETS_DIR,
+    FRAME_HEIGHT,
+    FRAME_WIDTH,
+    OUTPUT_DIR,
+)
+from ocr_engine import determine_mode
 from window_extractor import extract_windows
-from image_utils import crop, prep_cyan, prep_light_on_dark
+
+
+BOX_COLORS = {
+    "b_mode": (0, 0, 255),
+    "spectral": (0, 255, 0),
+    "m_mode": (255, 0, 0),
+}
+
+
+def _save_image(path, image):
+    """Write an image and fail loudly if OpenCV reports a save error."""
+    print(f"[save_image] Writing image shape={image.shape} to {path}.")
+    if not cv2.imwrite(str(path), image):
+        raise OSError(f"Could not save image to {path}")
+    print(f"[save_image] Successfully saved: {path}")
+
 
 def process_frame(filename):
-    # Dynamically build paths
+    """Detect active windows, save their crops, and save a labeled preview."""
     image_path = ASSETS_DIR / filename
-    output_path = ASSETS_DIR / f"annotated_{filename}"
-    
-    # Load the frame
     frame = cv2.imread(str(image_path))
     if frame is None:
-        print(f"Error: Could not load image at {image_path}")
-        return
+        print(f"[process_frame] ERROR: cv2.imread returned None for {image_path}.")
+        raise FileNotFoundError(f"Could not load image: {image_path}")
+    print(
+        f"[process_frame] Loaded image shape={frame.shape}; height={frame.shape[0]}, width={frame.shape[1]}, channels={frame.shape[2]}, dtype={frame.dtype}."
+    )
 
-    # 1. Detect Layout Mode
+    # OCR the footer first. The resulting mode decides whether we expect only
+    # B-mode or both B-mode and a lower spectral/M-mode window.
     mode = determine_mode(frame)
-    print(f"Mode: {mode}")
-    
-    # 2. Extract Bounding Boxes & Image Crops
     windows = extract_windows(frame, mode)
-    
-    # Create a copy of the frame specifically for drawing our boxes
-    annotated_frame = frame.copy()
-    
-    # 3. Draw Bounding Boxes
-    # Draw B-Mode (Red Box)
-    if 'b_mode_coords' in windows:
-        bc = windows['b_mode_coords']
-        cv2.rectangle(annotated_frame, (bc['x1'], bc['y1']), (bc['x2'], bc['y2']), (0, 0, 255), 2)
-        cv2.putText(annotated_frame, "B-MODE", (bc['x1'], bc['y1'] - 10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-        print(f"B-Mode Extracted at: {bc}")
-        
-    # Draw Spectral / M-Mode (Green Box)
-    if f"{mode}_coords" in windows:
-        bc = windows[f"{mode}_coords"]
-        cv2.rectangle(annotated_frame, (bc['x1'], bc['y1']), (bc['x2'], bc['y2']), (0, 255, 0), 2)
-        cv2.putText(annotated_frame, mode.upper(), (bc['x1'], bc['y1'] - 10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    print(f"[process_frame] Detected mode={mode!r}; windows extracted={list(windows)}." )
 
-    # Save the annotated image to visually verify it worked
-    cv2.imwrite(str(output_path), annotated_frame)
-    print(f"Saved annotated preview to: {output_path}")
-    
-    # 4. Calibrate Axes
-    if mode in ['spectral', 'm_mode']:
-        # Calibrate Velocity/Depth Axis
-        vel_roi, vel_off = crop(frame, "velocity_axis")
-        vel_words = ocr_words(prep_light_on_dark(vel_roi), vel_off, psm=11, whitelist="-0123456789")
-        vel_calibration = fit_axis(vel_words)
-        if vel_calibration:
-            a, b = vel_calibration
-            print(f"Bottom Axis Calibration: value = {a:.4f} * pixel_y + {b:.2f}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"[process_frame] Output directory is ready: {OUTPUT_DIR}.")
 
-    # Calibrate B-Mode Depth Scale
-    scale_name = "depth_scale_b_only" if mode == 'b_only' else "depth_scale"
-    depth_roi, depth_off = crop(frame, scale_name)
-    depth_words = ocr_words(prep_cyan(depth_roi), depth_off, psm=11, whitelist="0123456789")
-    depth_calibration = fit_axis(depth_words)
-    if depth_calibration:
-        a, b = depth_calibration
-        print(f"B-Mode Depth Calibration: cm = {a:.4f} * pixel_y + {b:.2f}")
+    # Draw on a copy so the individual crop images and source frame stay clean.
+    annotated = frame.copy()
+    output_paths = {}
+    image_stem = image_path.stem
+
+    # Each entry contains an image crop and its (left, top, right, bottom)
+    # coordinates in the original frame.
+    for window_name, (window_image, bounds) in windows.items():
+        x1, y1, x2, y2 = bounds
+        color = BOX_COLORS[window_name]
+        label = window_name.replace("_", "-").upper()
+        print(
+            f"[process_frame] Annotating {label}: bounds "
+            f"(left={x1}, top={y1}, right={x2}, bottom={y2}), "
+            f"crop shape={window_image.shape}, box color (BGR)={color}."
+        )
+
+        # The right and bottom values mark the far edge of the box; thickness
+        # controls how many pixels wide the border is.
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 1)
+
+        # Keep the text label inside the image if the box begins near its top.
+        cv2.putText(
+            annotated,
+            label,
+            (x1, max(y1 - 10, 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            color,
+            1,
+        )
+
+        # Save each active mode crop separately using a descriptive filename.
+        crop_path = OUTPUT_DIR / f"{image_stem}_{window_name}.png"
+        _save_image(crop_path, window_image)
+        output_paths[window_name] = crop_path
+
+    # Save the annotated source frame after all active windows have been drawn.
+    annotated_path = OUTPUT_DIR / f"annotated_{image_path.name}"
+    _save_image(annotated_path, annotated)
+    output_paths["annotated"] = annotated_path
+    print(f"[process_frame] Complete. Output files: {output_paths}.")
+    return output_paths
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process and extract data from an ultrasound frame.")
-    parser.add_argument(
-        "filename", 
-        type=str, 
-        nargs='?', 
-        default="b_spectral_20261005_000356.png", 
-        help="The filename of the image inside the assets directory (optional)"
+    parser = argparse.ArgumentParser(
+        description="Detect ultrasound display windows in a frame."
     )
-    
+    parser.add_argument(
+        "filename",
+        nargs="?",
+        default="b_spectral_20261005_000356.png",
+        help="Image filename inside the assets directory.",
+    )
     args = parser.parse_args()
     process_frame(args.filename)

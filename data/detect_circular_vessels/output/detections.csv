@@ -1,0 +1,4 @@
+image,cx,cy,radius,major,minor,circularity,aspect,contrast,color_flow,score
+example_transverse.png,285.4,120.4,43.3,122.1,64.4,0.818,0.527,76.1,False,0.842
+frame_006090.jpg,187.5,78.2,28.3,80.4,41.8,0.811,0.52,76.0,False,0.839
+frame_012000.jpg,112.8,160.4,9.7,28.6,13.8,0.787,0.483,31.7,False,0.605

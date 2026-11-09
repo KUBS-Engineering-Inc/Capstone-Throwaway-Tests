@@ -196,11 +196,24 @@ def to_work_size(bgr):
     return cv2.resize(bgr, None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR), s
 
 
-def detect(image, method=METHOD, **thresholds):
-    """Detect circular vessels. Returned coordinates are in input-image pixels."""
+def detect_contour(image, **thresholds):
+    """Detect circular vessels with the threshold sweep (dark_regions).
+    Returned coordinates are in input-image pixels."""
+    return _detect(image, dark_regions, **thresholds)
+
+
+def detect_hough(image, **thresholds):
+    """Detect circular vessels with cv2.HoughCircles (hough_regions).
+    Returned coordinates are in input-image pixels."""
+    return _detect(image, hough_regions, **thresholds)
+
+
+def _detect(image, find_regions, **thresholds):
+    """Shared by both methods: clean the view, find candidate regions with
+    `find_regions`, keep the circular ones, merge overlaps, scale back."""
     work, s = to_work_size(image)
     gray, flow, clipped = clean_view(work)
-    regions = (hough_regions if method == "hough" else dark_regions)(gray, flow, clipped)
+    regions = find_regions(gray, flow, clipped)
     cands = []
     for reg in regions:
         if is_circular(reg, **thresholds):
@@ -252,6 +265,7 @@ def run(input, output):
     Returns the number of images with a detection."""
     images = list_images(input)
     thresholds = dict(min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_contrast=MIN_CONTRAST)
+    detect = detect_hough if METHOD == "hough" else detect_contour
 
     # 1. Detect in every image.
     rows, overlays = [], {}
@@ -260,7 +274,7 @@ def run(input, output):
         if image is None:
             print(f"Skipping unreadable image: {img_path}")
             continue
-        dets = detect(image, METHOD, **thresholds)
+        dets = detect(image, **thresholds)
         rows += [{"image": img_path.name, **d} for d in dets]
         overlays[img_path.name] = annotate(image, dets)
         print(f"{img_path.name}: {len(dets)} circular vessel(s)")

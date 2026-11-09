@@ -10,7 +10,7 @@ OUTPUT is a directory (default: data/detect_circular_vessels/output/, created if
 saved there with the overlay drawn on it (same filename), and all detections go
 to OUTPUT/detections.csv (coordinates are in input-image pixels).
 Overlay: yellow = traced lumen outline, red cross = centre, number = score.
---show also displays each overlay in a window (any key: next, q: quit).
+--show also displays each overlay in a window (any key: next, q: close the window).
 
 Method (classical OpenCV, no training):
   1. Inpaint thin overlays (green Doppler cursor, cyan colour box); treat
@@ -246,7 +246,7 @@ def annotate(image, dets):
 def show_image(title, image):
     """Display an image; returns False if the user pressed q/Esc to stop."""
     cv2.imshow("result", image)
-    cv2.setWindowTitle("result", f"{title}  (any key: next, q: quit)")
+    cv2.setWindowTitle("result", f"{title}  (any key: next, q: close)")
     return cv2.waitKey(0) & 0xFF not in (ord("q"), 27)
 
 
@@ -268,22 +268,27 @@ def run(input, output):
     detect = detect_hough if METHOD == "hough" else detect_contour
 
     # 1. Detect in every image.
-    rows, overlays = [], {}
+    detections = {}  # image path -> list of detections
     for img_path in images:
         image = cv2.imread(str(img_path))
         if image is None:
             print(f"Skipping unreadable image: {img_path}")
             continue
-        dets = detect(image, **thresholds)
-        rows += [{"image": img_path.name, **d} for d in dets]
-        overlays[img_path.name] = annotate(image, dets)
-        print(f"{img_path.name}: {len(dets)} circular vessel(s)")
-        if SHOW and not show_image(f"{img_path.name}: {len(dets)} vessel(s)", overlays[img_path.name]):
-            break
+        detections[img_path] = detect(image, **thresholds)
+        print(f"{img_path.name}: {len(detections[img_path])} circular vessel(s)")
+
+    # 2. Draw the detections on each image.
+    overlays = {}  # image file name -> annotated image
+    showing = SHOW
+    for img_path, dets in detections.items():
+        overlays[img_path.name] = annotate(cv2.imread(str(img_path)), dets)
+        if showing:  # q/Esc closes the viewer; the remaining images are still drawn
+            showing = show_image(f"{img_path.name}: {len(dets)} vessel(s)", overlays[img_path.name])
     if SHOW:
         cv2.destroyAllWindows()
 
-    # 2. Write the results.
+    # 3. Write the results.
+    rows = [{"image": img_path.name, **d} for img_path, dets in detections.items() for d in dets]
     out_dir = Path(output)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, overlay in overlays.items():

@@ -1,0 +1,7 @@
+{
+  "b_mode_crop": "1005_b_only_4cm.png",
+  "cm_per_pixel": 0.006872852233676976,
+  "horizontal_pixel_spacing_equals_vertical": true,
+  "top_depth_cm": 0.0,
+  "bottom_depth_cm": 4.0
+}

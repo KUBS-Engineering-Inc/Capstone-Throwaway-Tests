@@ -1,0 +1,7 @@
+{
+  "b_mode_crop": "0529_b_spectral_3cm.png",
+  "cm_per_pixel": 0.010416666666666666,
+  "horizontal_pixel_spacing_equals_vertical": true,
+  "top_depth_cm": 0.0,
+  "bottom_depth_cm": 3.0
+}

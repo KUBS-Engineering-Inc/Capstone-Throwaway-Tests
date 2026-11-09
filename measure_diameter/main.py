@@ -48,6 +48,8 @@ def save_cursor_debug_outputs(
         image,
         detection.green_mask,
         detection.beam,
+        detection.insonation_line,
+        detection.cursor_center,
     )
     write_image(preview_path, cursor_preview)
     write_image(mask_path, detection.green_mask)
@@ -65,7 +67,8 @@ def save_cursor_debug_outputs(
     )
     print(f"Cursor overlay saved to: {preview_path}")
     print(f"Green mask saved to: {mask_path}")
-    print(f"Approximate cursor marker center: {detection.marker_center}")
+    print(f"Fitted insonation line: {detection.insonation_line}")
+    print(f"Beam/insonation intersection: {detection.cursor_center}")
 
 
 def save_lumen_debug_outputs(
@@ -130,17 +133,19 @@ def main(filename: str) -> None:
         raise SystemExit(str(error)) from error
 
     save_cursor_debug_outputs(image_path, image, detection)
-    if detection.marker_center is None:
-        raise SystemExit("Could not locate the cursor's short marker strokes.")
+    if detection.cursor_center is None:
+        raise SystemExit(
+            "Could not fit the insonation stroke and intersect it with the Doppler beam."
+        )
 
     print(
-        "\n[Run 3/4] Using the approximate cursor marker center as the "
+        "\n[Run 3/4] Using the fitted beam/insonation-line intersection as the "
         "lumen-search anchor; the cursor angle is not used as the vessel angle."
     )
     candidates = extract_lumen_candidates(
         image,
         detection.green_mask,
-        detection.marker_center,
+        detection.cursor_center,
     )
     if not candidates:
         raise SystemExit("No dark lumen candidate containing the cursor point was found.")
@@ -148,7 +153,7 @@ def main(filename: str) -> None:
     save_lumen_debug_outputs(
         image_path,
         image,
-        detection.marker_center,
+        detection.cursor_center,
         candidates,
     )
 

@@ -9,12 +9,16 @@ upstream nodes as `inputs`. List the run order with:
 """
 from pathlib import Path
 
-from compare import files_diff
+from compare import csv_diff, files_diff
 from dag import Pipeline, load_stage
 
 ROOT = Path(__file__).resolve().parents[2]  # repo root
 
 extract_frames = load_stage("extract_frames")
+detect_circular_vessels = load_stage("detect_circular_vessels")
+# A second, separate copy of the stage with its METHOD setting switched to Hough.
+detect_circular_vessels_hough = load_stage("detect_circular_vessels")
+detect_circular_vessels_hough.METHOD = "hough"
 
 pipeline = p = Pipeline("vessels")
 
@@ -23,4 +27,22 @@ frames = p.node(
     inputs=[ROOT / "data/extract_frames/input"],
     params={"fps": 1},
     compare=files_diff(),
+)
+
+# TODO: the crop stage (full scanner screen -> B-mode view) is coming from a
+# teammate. Once it exists:
+#   crops = p.node("crop_view", crop_view.run, inputs=[frames], compare=files_diff())
+# and use `crops` as the input of the stages below. Until then, they read the
+# already-cropped sample images in data/detect_circular_vessels/input/.
+vessels = p.node(
+    "detect_circular_vessels", detect_circular_vessels.run,
+    inputs=[ROOT / "data/detect_circular_vessels/input"],
+    compare=csv_diff("detections.csv", key="image", tolerance=0.5),
+)
+
+# Same stage with the Hough-circle method, kept for comparison with the default.
+vessels_hough = p.node(
+    "detect_circular_vessels_hough", detect_circular_vessels_hough.run,
+    inputs=[ROOT / "data/detect_circular_vessels/input"],
+    compare=csv_diff("detections.csv", key="image", tolerance=0.5),
 )

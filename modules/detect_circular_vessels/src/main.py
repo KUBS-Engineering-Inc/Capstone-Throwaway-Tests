@@ -251,32 +251,36 @@ def run(input, output):
     detections.csv to `output`, using the settings at the top of this file.
     Returns the number of images with a detection."""
     images = list_images(input)
+    thresholds = dict(min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_contrast=MIN_CONTRAST)
+
+    # 1. Detect in every image.
+    rows, overlays = [], {}
+    for img_path in images:
+        image = cv2.imread(str(img_path))
+        if image is None:
+            print(f"Skipping unreadable image: {img_path}")
+            continue
+        dets = detect(image, METHOD, **thresholds)
+        rows += [{"image": img_path.name, **d} for d in dets]
+        overlays[img_path.name] = annotate(image, dets)
+        print(f"{img_path.name}: {len(dets)} circular vessel(s)")
+        if SHOW and not show_image(f"{img_path.name}: {len(dets)} vessel(s)", overlays[img_path.name]):
+            break
+    if SHOW:
+        cv2.destroyAllWindows()
+
+    # 2. Write the results.
     out_dir = Path(output)
     out_dir.mkdir(parents=True, exist_ok=True)
-    thresholds = dict(min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_contrast=MIN_CONTRAST)
+    for name, overlay in overlays.items():
+        cv2.imwrite(str(out_dir / name), overlay)
     fields = ["image", "cx", "cy", "radius", "major", "minor", "circularity", "aspect", "contrast", "color_flow", "score"]
-
-    hits = 0
     with open(out_dir / "detections.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        for img_path in images:
-            image = cv2.imread(str(img_path))
-            if image is None:
-                print(f"Skipping unreadable image: {img_path}")
-                continue
-            dets = detect(image, METHOD, **thresholds)
-            for d in dets:
-                writer.writerow({"image": img_path.name, **d})
-            hits += bool(dets)
-            print(f"{img_path.name}: {len(dets)} circular vessel(s)")
-            annotated = annotate(image, dets)
-            cv2.imwrite(str(out_dir / img_path.name), annotated)
-            if SHOW and not show_image(f"{img_path.name}: {len(dets)} vessel(s)", annotated):
-                break
+        writer.writerows(rows)
 
-    if SHOW:
-        cv2.destroyAllWindows()
+    hits = len({r["image"] for r in rows})
     print(f"Done: {hits} of {len(images)} image(s) had circular vessels -> {out_dir}/")
     return hits
 

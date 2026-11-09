@@ -38,6 +38,12 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 WORK_SIZE = 300  # images are resized so their shorter side is this many px
 THRESHOLDS = range(10, 95, 5)
 
+# Defaults for run() and the command line.
+METHOD = "contour"       # "contour" (threshold sweep) or "hough" (cv2.HoughCircles)
+MIN_CIRCULARITY = 0.75   # convex-hull circularity, 0..1
+MIN_ASPECT = 0.4         # ellipse minor/major axis ratio
+MIN_CONTRAST = 30        # wall minus lumen brightness, 0..255
+
 
 def clean_view(bgr):
     """Return (gray, flow, clipped_flow).
@@ -135,7 +141,8 @@ def score(reg):
     return round(0.6 * shape + 0.4 * contrast, 3)
 
 
-def is_circular(reg, min_circularity=0.75, min_aspect=0.4, min_solidity=0.9, min_contrast=30):
+def is_circular(reg, min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_solidity=0.9,
+                min_contrast=MIN_CONTRAST):
     return (not reg["touches_edge"]
             and reg["clipped_frac"] <= 0.5  # flow blob cut off by the colour box
             and reg["circularity"] >= min_circularity
@@ -188,7 +195,7 @@ def to_work_size(bgr):
     return cv2.resize(bgr, None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR), s
 
 
-def detect(image, method="contour", **thresholds):
+def detect(image, method=METHOD, **thresholds):
     """Detect circular vessels. Returned coordinates are in input-image pixels."""
     work, s = to_work_size(image)
     gray, flow, clipped = clean_view(work)
@@ -238,7 +245,8 @@ def list_images(path):
     raise FileNotFoundError(f"Input not found: {path}")
 
 
-def run(input, output, method="contour", min_circularity=0.75, min_aspect=0.4, min_contrast=30, show=False):
+def run(input, output, method=METHOD, min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT,
+        min_contrast=MIN_CONTRAST, show=False):
     """Detect circular vessels in every image under `input`; write overlays and
     detections.csv to `output`. Returns the number of images with a detection."""
     images = list_images(input)
@@ -277,11 +285,14 @@ def main():
     p.add_argument("input", nargs="?", default=DATA_DIR / "input",
                    help="image file or directory of images, cropped to the B-mode view (default: data/detect_circular_vessels/input/)")
     p.add_argument("output", nargs="?", default=DATA_DIR / "output", help="output directory (default: data/detect_circular_vessels/output/)")
-    p.add_argument("--method", choices=["contour", "hough"], default="contour",
-                   help="contour: threshold-sweep segmentation (default); hough: cv2.HoughCircles")
-    p.add_argument("--min-circularity", type=float, default=0.75, help="convex-hull circularity, 0..1 (default: 0.75)")
-    p.add_argument("--min-aspect", type=float, default=0.4, help="ellipse minor/major axis ratio (default: 0.4)")
-    p.add_argument("--min-contrast", type=float, default=30, help="wall minus lumen brightness, 0..255 (default: 30)")
+    p.add_argument("--method", choices=["contour", "hough"], default=METHOD,
+                   help=f"contour: threshold-sweep segmentation; hough: cv2.HoughCircles (default: {METHOD})")
+    p.add_argument("--min-circularity", type=float, default=MIN_CIRCULARITY,
+                   help=f"convex-hull circularity, 0..1 (default: {MIN_CIRCULARITY})")
+    p.add_argument("--min-aspect", type=float, default=MIN_ASPECT,
+                   help=f"ellipse minor/major axis ratio (default: {MIN_ASPECT})")
+    p.add_argument("--min-contrast", type=float, default=MIN_CONTRAST,
+                   help=f"wall minus lumen brightness, 0..255 (default: {MIN_CONTRAST})")
     p.add_argument("--show", action="store_true", help="display each annotated result in a window")
     a = p.parse_args()
     run(a.input, a.output, method=a.method, min_circularity=a.min_circularity,

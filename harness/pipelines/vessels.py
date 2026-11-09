@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[2]  # repo root
 
 extract_frames = load_stage("extract_frames")
 detect_circular_vessels = load_stage("detect_circular_vessels")
+# A second, separate copy of the stage with its METHOD setting switched to Hough.
+detect_circular_vessels_hough = load_stage("detect_circular_vessels")
+detect_circular_vessels_hough.METHOD = "hough"
 
 pipeline = p = Pipeline("vessels")
 
@@ -39,8 +42,7 @@ vessels = p.node(
 
 # Same stage with the Hough-circle method, kept for comparison with the default.
 vessels_hough = p.node(
-    "detect_circular_vessels_hough", detect_circular_vessels.run,
+    "detect_circular_vessels_hough", detect_circular_vessels_hough.run,
     inputs=[ROOT / "data/detect_circular_vessels/input"],
-    params={"method": "hough"},
     compare=csv_diff("detections.csv", key="image", tolerance=0.5),
 )

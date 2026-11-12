@@ -1,7 +1,7 @@
 from pathlib import Path
-BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
-OUTPUT_DIR = BASE_DIR / "output"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "segment_windows"  # modules/segment_windows/src/config.py -> repo root
+ASSETS_DIR = DATA_DIR / "input"
+OUTPUT_DIR = DATA_DIR / "output"
 
 # These fixed coordinates are based on the expected screenshot dimensions.
 # Coordinates are written as (left, top, right, bottom)

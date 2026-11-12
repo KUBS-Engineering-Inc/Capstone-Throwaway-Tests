@@ -150,7 +150,7 @@ if __name__ == "__main__":
         "filename",
         nargs="?",
         default="b_spectral_20261005_000356.png",
-        help="Image filename inside the assets directory.",
+        help="Image filename inside data/segment_windows/input/.",
     )
     args = parser.parse_args()
     process_frame(args.filename)

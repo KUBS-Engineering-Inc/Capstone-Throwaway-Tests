@@ -6,3 +6,4 @@ opencv-python==5.0.0.93
 ipykernel==7.4.0
 matplotlib==3.11.2
 pytesseract==0.3.13
+scipy==1.18.1

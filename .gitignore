@@ -8,4 +8,4 @@ frames/
 .DS_Store
 input_videos/
 
-measure_diameter/previews/
+modules/measure_diameter/src/previews/

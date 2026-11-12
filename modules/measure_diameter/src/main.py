@@ -167,7 +167,7 @@ if __name__ == "__main__":
         type=str,
         nargs="?",
         default=DEFAULT_INPUT_FILENAME,
-        help="The filename of the image inside the assets directory.",
+        help="The filename of the image inside data/measure_diameter/input/.",
     )
 
     args = parser.parse_args()

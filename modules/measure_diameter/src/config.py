@@ -2,9 +2,9 @@ import math
 from pathlib import Path
 
 
-FEATURE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = FEATURE_DIR / "assets"
-OUTPUT_DIR = FEATURE_DIR / "output"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "measure_diameter"  # modules/measure_diameter/src/config.py -> repo root
+ASSETS_DIR = DATA_DIR / "input"
+OUTPUT_DIR = DATA_DIR / "output"
 DEFAULT_INPUT_FILENAME = "0356_b_spectral_4cm.png"
 
 GREEN_HSV_LOWER = (35, 40, 40)

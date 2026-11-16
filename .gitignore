@@ -5,4 +5,4 @@ frames/
 *.mov
 *.avi
 *.mkv
-output/
+.DS_Store

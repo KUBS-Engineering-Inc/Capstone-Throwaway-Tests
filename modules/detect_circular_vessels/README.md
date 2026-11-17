@@ -87,13 +87,22 @@ gets one small false detection at 0.61; `frame_004920.jpg` gets none.
 
 ## Design Decision
 
-- **Classical OpenCV, no training:** there is no labelled data yet, so the
-  detector uses rules based on how a transverse vessel looks (dark lumen,
-  bright wall, roughly round) rather than a trained model.
-- **Threshold sweep instead of one threshold:** a single darkness cutoff either
-  catches only part of the lumen or merges it with nearby dark tissue, and the
-  right cutoff changes between images. Trying every level and keeping the best
-  outline avoids picking one by hand.
+The initial approach had two options to follow, a classic OpenCV approach or a machine learning approach. Due to the amount of data needed to train the machine learning and the deadline for verifying the code in the throwaway test, we stuck with using a classical OpenCV approach.
+
+When it came to the OpenCV approach, the approach later breaks into either using a Hough or Contour approach. A Contour approach involves looking at and connecting dark blobs, relying on the lumen being darker than its surroundings. A Hough approach attempts to find the circular edges at places where brightness changes sharply. After trying both on the same input image, we found that both approaches can find the vessel but Hough cannot accurately outline it due to the circle not fitting the lumen, so it fails the lumen checks.
+
+![Hough vs contour on the same frame](assets/hough_vs_contour.png)
+
+*Same frame (006090, enlarged). Left: the circle Hough proposes (magenta) covers
+the lumen plus the bright wall below it, so it fails the lumen checks. Right: the
+contour method outlines the dark lumen itself (yellow, score 0.84).*
+
+When using a Contour threshold to determine the lumen, it is also difficult to select the best threshold between what is considered the lumen and not. A single darkness cutoff either catches only parts of the lumen or merges it with nearby dark tissue. Between different frames, the right cutoff also changes. To circumvent this, we can use multiple thresholds in a threshold sweep.
+
+Inside the threshold sweep, we calculate the score of the outline in each threshold, and keep the outline with the highest score. The score is based on the shape (roughly circular-ish) and the contrast. The main feature we look at is the high contrast between the brighter ring around the lumen and the dark lumen inside (a result of the connective tissue of the artery wall).
+
+Other details:
+
 - **Fixed working size (300 px):** the blur, the 5×5 cleanup shape and the
   minimum wall-ring width are in pixels. Resizing every input to the same size
   makes those settings behave the same whatever resolution the crop stage gives.
@@ -102,25 +111,20 @@ gets one small false detection at 0.61; `frame_004920.jpg` gets none.
   cursor and cyan box lines would cut through regions and break their shape.
   Flow cut off by the colour box is excluded because its outline is the box's,
   not the vessel's.
-- **Wall-ring contrast:** many dark regions are round (shadows, gaps between
-  tissue). Requiring a brighter ring around the region is what separates a
-  vessel from other dark blobs.
 - **Ovals are accepted:** lumens are often elliptical, so the aspect limit is
   0.4, not close to 1. The initial 0.55 rejected the real artery in frame
   006090 (aspect ≈ 0.52).
-- **Contour method over Hough:** in ultrasound the top and bottom walls are
-  bright but the side walls are faint, so Hough circles tend to lock onto the
-  outer bright wall and fail the lumen checks (0 of 4 sample images). Hough is
-  kept as an option and as a comparison node in the harness.
-- **Limitations:**
-  - The outline is one threshold level of the blurred image, so it sits a
-    little inside the true wall, and `radius`, `major` and `minor` read
-    slightly small.
-  - The score favours the largest level before the region leaks, because
-    contrast grows as the region grows.
-  - Small round dark structures in longitudinal views can pass (score about
-    0.6 versus 0.84 for the artery). A score cutoff around 0.75 would separate
-    them but is not implemented; deciding whether a frame is transverse at all
-    is left to a separate view-classification stage.
-  - Results are in pixels; converting to mm needs the depth scale (see
-    `scale_ocr`).
+
+Limitations:
+
+- The outline is one threshold level of the blurred image, so it sits a
+  little inside the true wall, and `radius`, `major` and `minor` read
+  slightly small.
+- The score favours the largest level before the region leaks, because
+  contrast grows as the region grows.
+- Small round dark structures in longitudinal views can pass (score about
+  0.6 versus 0.84 for the artery). A score cutoff around 0.75 would separate
+  them but is not implemented; deciding whether a frame is transverse at all
+  is left to a separate view-classification stage.
+- Results are in pixels; converting to mm needs the depth scale (see
+  `scale_ocr`).

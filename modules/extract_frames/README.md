@@ -1,4 +1,8 @@
-# How to Run
+# Extract Frames
+
+Splits ultrasound recordings into individual frame images. It is the first stage of the vessels pipeline.
+
+## How to Run
 
 From the repo root, with the shared environment active (`source .venv/bin/activate`):
 
@@ -21,7 +25,7 @@ Supported videos: `.mp4`, `.mov`, `.avi`, `.mkv`. Videos are not committed
 From Python, or from the harness, call `run(input, output, every=1, fps=None, ext="jpg")`.
 The harness's vessels pipeline runs it with `fps=1`.
 
-# What it Does
+## What it Does
 
 Splits each video into individual frame images for the later stages.
 
@@ -40,7 +44,7 @@ Files written to OUTPUT, one folder per video:
 For example, `recording_oct_5.mp4` at `--fps 1` (30 fps video) gives
 `recording_oct_5/frame_000000.jpg`, `frame_000030.jpg`, `frame_000060.jpg`, …
 
-# Design Decision
+## Design Decision
 
 - **OpenCV only:** the other stages already use OpenCV, so frame extraction
   adds no new dependency (no ffmpeg install needed).

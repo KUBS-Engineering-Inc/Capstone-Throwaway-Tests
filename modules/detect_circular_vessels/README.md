@@ -1,4 +1,8 @@
-# How to Run
+# Detect Circular Vessels
+
+Finds vessels cut crosswise (transverse view) in a B-mode image that is already cropped to the view, and writes each vessel's outline, size and score.
+
+## How to Run
 
 From the repo root, with the shared environment active (`source .venv/bin/activate`):
 
@@ -23,7 +27,7 @@ The same defaults are the constants at the top of `src/main.py` (`METHOD`,
 `MIN_CIRCULARITY`, `MIN_ASPECT`, `MIN_CONTRAST`, `SHOW`). From Python, or from
 the harness, call `run(input, output)`; it uses those constants.
 
-# What it Does
+## What it Does
 
 Finds vessels cut crosswise (transverse view) in a B-mode / colour Doppler image:
 a dark, roughly round lumen with a brighter wall around it.
@@ -81,7 +85,7 @@ On the sample inputs, the transverse artery in `frame_006090.jpg` and
 `example_transverse.png` scores 0.84; `frame_012000.jpg` (a longitudinal view)
 gets one small false detection at 0.61; `frame_004920.jpg` gets none.
 
-# Design Decision
+## Design Decision
 
 - **Classical OpenCV, no training:** there is no labelled data yet, so the
   detector uses rules based on how a transverse vessel looks (dark lumen,

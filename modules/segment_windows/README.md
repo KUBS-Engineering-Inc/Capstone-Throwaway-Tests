@@ -1,5 +1,7 @@
 # Segmenting Windows in an Ultrasound Video Frame - Feasibility Testing
 
+Splits an ultrasound screenshot into its display windows (B-mode, plus the spectral or M-mode window when present) and works out the B-mode's centimeters per pixel from the OCR-read depth.
+
 ## How to Run
 Ensure you have Python installed and the libraries listed in `requirements.txt` set up.
 

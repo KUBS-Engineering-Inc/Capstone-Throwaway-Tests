@@ -1,5 +1,7 @@
 # Measuring Perpendicular Diameter - Feasibility Testing
 
+Finds the green Doppler cursor in an ultrasound screenshot, then searches for the dark vessel lumen where the cursor's lines cross and reports candidate cross-section widths in pixels.
+
 ## How to Run
 Ensure you have Python installed and have the libraries listed in `requirements.txt` set up. 
 

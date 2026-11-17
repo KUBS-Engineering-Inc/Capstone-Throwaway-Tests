@@ -1,6 +1,10 @@
-# How to Run
+# ECG
 
-## ECG waveform and R-peak candidates
+Extracts the green ECG trace from a Terason screenshot as pixel coordinates and finds image-based R-peak candidates. The code is in the `ecg.ipynb` notebook.
+
+## How to Run
+
+### ECG waveform and R-peak candidates
 
 Open `ecg.ipynb`. By default, it reads `data/ecg/input/ecg_wave.png` and
 saves results to `data/ecg/output/`.
@@ -25,9 +29,9 @@ results = main(
 )
 ```
 
-# What it Does
+## What it Does
 
-## ECG waveform and R-peak extraction
+### ECG waveform and R-peak extraction
 
 The ECG notebook extracts the green ECG trace from a Terason screenshot,
 returns its y-coordinates, and identifies image-based R-peak candidates.
@@ -100,9 +104,9 @@ Files saved in `data/ecg/output/`:
   `ecg_graph.png`                     Standalone ECG coordinate graph
   -----------------------------------------------------------------------
 
-# Design Decision
+## Design Decision
 
-## ECG waveform and R-peak extraction
+### ECG waveform and R-peak extraction
 
 -   **Colour-dominance detection:** Green-channel thresholds are used
     because the ECG trace is green. Requiring green to exceed red and

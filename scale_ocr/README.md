@@ -11,7 +11,7 @@ Reads the scales off an ultrasound screenshot using OCR so we can turn pixel pos
 | `assets/half_b_half_doppler.png` | A spectral view, where the B-mode is on the top half and the Doppler spectrum is on the bottom |
 | The root `requirements.txt`      | Python packages the notebook needs, found one folder level above                               |
 
-# How to Run
+## How to Run
 
 1. **Install Tesseract.** `pytesseract` is just a wrapper, so the Tesseract OCR engine itself has to be installed on your machine and on your `PATH`. Instructions here: https://github.com/KUBS-Engineering-Inc/Capstone-Design-History-File/blob/main/00_Admin/ToolsInstallationGuide.md
 2. **Set up the Python environment.** The project uses Python 3.14 (see `.python-version` at the repo root).
@@ -25,7 +25,7 @@ Reads the scales off an ultrasound screenshot using OCR so we can turn pixel pos
 
 The notebook prints the parsed values for each image and shows a debug overlay with the regions of interest (yellow) and every number that OCR picked up (red).
 
-# What it Does
+## What it Does
 
 At its core, this is just OCR on the scales of the image. The notebook is split into a few sections:
 
@@ -70,7 +70,7 @@ In both images the depth check lines up with the "Depth 4 cm" readout. The B-mod
 
 The last section of the notebook starts on a simpler idea: only read the numbers at the two ends of the scale and attach them to the scale line, then interpolate the depth for every pixel in between. Right now that section just draws the region and runs the preprocessing on it, so it isn't finished yet.
 
-# Design Decision
+## Design Decision
 
 The first idea we thought about was to detect the numbers manually by looking for their characteristics (shape, color, size, being next to a tick mark) across the whole image, and then figuring out which ones belonged to which scale. The problem is that an ultrasound screenshot has a lot going on: the B-mode image itself, the Doppler spectrum, the ECG trace, the settings text, and the buttons along the bottom all have things that look like digits or lines. Searching the whole image would mean we'd have to sort out what's actually a scale label from everything else, which adds a lot of room for mistakes.
 

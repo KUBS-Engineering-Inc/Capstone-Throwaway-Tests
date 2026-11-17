@@ -1,6 +1,10 @@
-# How to Run
+# Doppler Waveform
 
-## Doppler waveform and envelope
+Extracts the white spectral Doppler trace from a Terason screenshot and calculates its upper envelope, in image-pixel coordinates. The code is in the `waveform.ipynb` notebook.
+
+## How to Run
+
+### Doppler waveform and envelope
 
 Open `waveform.ipynb`. By default, it reads
 `data/ecg/input/doppler_envelope.png` and saves results to `data/doppler_waveform/output`.
@@ -25,9 +29,9 @@ results = main(
 )
 ```
 
-# What it Does
+## What it Does
 
-## Doppler waveform and envelope extraction
+### Doppler waveform and envelope extraction
 
 The Doppler notebook extracts the white spectral Doppler trace from a
 Terason screenshot and calculates its upper envelope in image-pixel
@@ -82,9 +86,9 @@ Files saved in `outputs/waveform/`:
                                       extracted envelope overlaid
   -----------------------------------------------------------------------
 
-# Design Decision
+## Design Decision
 
-## Doppler waveform and envelope
+### Doppler waveform and envelope
 
 -   **Grayscale thresholding:** The Doppler trace is bright/gray against
     a dark graph background, so grayscale thresholding is used instead

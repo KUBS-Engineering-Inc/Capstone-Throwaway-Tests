@@ -46,17 +46,10 @@ For example, `recording_oct_5.mp4` at `--fps 1` (30 fps video) gives
 
 ## Design Decision
 
-- **OpenCV only:** the other stages already use OpenCV, so frame extraction
-  adds no new dependency (no ffmpeg install needed).
-- **File name = original frame index:** frames keep their position in the
-  video, even when only some are saved, so any result can be traced back to
-  its exact time in the recording (time = index / video fps). Six digits keep
-  the files sorted in order.
-- **One folder per video:** several recordings can be processed together
-  without their frames mixing.
-- **`--fps` rounds to whole frames:** frames are only skipped, never
-  interpolated, so every saved image is an original frame. The real rate can
-  differ slightly from the target when the video's fps is not a multiple of it.
-- **JPEG by default:** frames are about 3× smaller than PNG (150 KB vs 430 KB
-  for a `recording_oct_5` frame). JPEG compression
-  slightly changes pixel values; use `--ext png` if a later stage needs exact pixels.
+We used OpenCV to read the videos because every other stage already depends on it, so frame extraction doesn't add a new dependency or require installing ffmpeg.
+
+Each frame is named after its index in the original video (`frame_000030.jpg` is the 30th frame), even when only some frames are saved. That way any result from a later stage can be traced back to the exact moment in the recording, since the time is the index divided by the video's frame rate. The index is padded to six digits so the files stay in order when sorted by name. Frames from each video go into their own folder, so several recordings can be processed together without their frames mixing.
+
+When `--fps` is used, it is turned into "save every Nth frame" and rounded to a whole number. Frames are only ever skipped, never blended or interpolated, so every saved image is a real frame from the video. The trade-off is that the actual rate can be slightly off from the one requested when the video's frame rate isn't a multiple of it.
+
+Frames are saved as JPEG by default because they are about 3× smaller than PNG (around 150 KB instead of 430 KB for a `recording_oct_5` frame). JPEG compression slightly changes pixel values, so if a later stage needs the exact pixels, use `--ext png` instead.

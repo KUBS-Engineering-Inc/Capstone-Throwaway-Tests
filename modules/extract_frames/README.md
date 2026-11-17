@@ -48,7 +48,7 @@ For example, `recording_oct_5.mp4` at `--fps 1` (30 fps video) gives
 
 We used OpenCV to read the videos because every other stage already depends on it, so frame extraction doesn't add a new dependency or require installing ffmpeg.
 
-Each frame is named after its index in the original video (`frame_000030.jpg` is the 30th frame), even when only some frames are saved. That way any result from a later stage can be traced back to the exact moment in the recording, since the time is the index divided by the video's frame rate. The index is padded to six digits so the files stay in order when sorted by name. Frames from each video go into their own folder, so several recordings can be processed together without their frames mixing.
+Each frame is named after its index in the original video (`frame_000030.jpg` is frame 30, counting from 0, which is one second into a 30 fps video), even when only some frames are saved. That way any result from a later stage can be traced back to the exact moment in the recording, since the time is the index divided by the video's frame rate. The index is padded to six digits so the files stay in order when sorted by name. Frames from each video go into their own folder, so several recordings can be processed together without their frames mixing.
 
 When `--fps` is used, it is turned into "save every Nth frame" and rounded to a whole number. Frames are only ever skipped, never blended or interpolated, so every saved image is a real frame from the video. The trade-off is that the actual rate can be slightly off from the one requested when the video's frame rate isn't a multiple of it.
 

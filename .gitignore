@@ -6,6 +6,7 @@ frames/
 *.avi
 *.mkv
 .DS_Store
+output/
 input_videos/
 
 modules/measure_diameter/src/previews/

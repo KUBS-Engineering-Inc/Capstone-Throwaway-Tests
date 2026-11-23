@@ -16,6 +16,12 @@ python harness/src/main.py order harness/pipelines/vessels.py      # list stages
 `run` also takes `--run-id NAME` (default: a timestamp).
 Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `"fail_on_diff": true`).
 
+While it runs, the terminal shows a live row per node: a spinner and timer while
+it runs, a progress bar with done/total and time left for stages that report
+progress, and ✓ / ✗ / - (skipped) when done, with the error or reason cut to fit.
+When the output isn't a terminal (piped, redirected, CI), it prints one line per
+node as it finishes instead. The display lives in `harness/src/progress.py`.
+
 Each run writes `harness/output/runs/<run_id>/`:
 - `<node>/output/` — what the stage wrote; `<node>/log.txt` — what it printed
 - `report.md` — status, params used, timings, failures, baseline comparison
@@ -81,6 +87,9 @@ Every run re-runs every stage. If a stage fails, the stages downstream of it are
      named after the upstream node.
    - `output`: an existing, empty directory to write into.
    - Raise an exception on failure (don't call `sys.exit`).
+   - Optional: accept `progress=None` and call `progress(done, total)` as you
+     work (e.g. once per frame). The harness passes a function that drives the
+     node's progress bar; standalone runs pass nothing.
    - Be deterministic: same input + params -> same output.
 3. Write results the next stage (and comparators) can read — ideally a CSV keyed
    by image name, plus any images.

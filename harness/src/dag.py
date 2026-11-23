@@ -14,6 +14,7 @@ Each run writes, under the harness output directory:
 import contextlib
 import graphlib
 import importlib.util
+import inspect
 import sys
 import time
 import traceback
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from compare import Comparison
+from progress import Display
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/dag.py -> repo root
 MODULES_DIR = REPO_ROOT / "modules"
@@ -97,15 +99,18 @@ class Pipeline:
         run_dir.mkdir(parents=True)  # fails if the run already exists
         order = graphlib.TopologicalSorter({n: n.upstream for n in self.nodes.values()}).static_order()
 
+        order = list(order)
         status, notes = {}, {}
-        print(f"Run {run_id}: {len(self.nodes)} node(s)")
-        for node in order:
-            failed_up = [u.name for u in node.upstream if status[u.name] != "ok"]
-            if failed_up:
-                status[node.name], notes[node.name] = "skipped", f"upstream failed: {', '.join(failed_up)}"
-            else:
-                status[node.name], notes[node.name] = self._execute(node, run_dir)
-            print(f"  {'✓' if status[node.name] == 'ok' else '✗'} {node.name}: {status[node.name]} {notes[node.name]}")
+        with Display(f"Run {run_id} — pipeline {self.name}: {len(self.nodes)} node(s)",
+                     [n.name for n in order]) as display:
+            for node in order:
+                failed_up = [u.name for u in node.upstream if status[u.name] != "ok"]
+                if failed_up:
+                    status[node.name], notes[node.name] = "skipped", f"upstream failed: {', '.join(failed_up)}"
+                else:
+                    progress = display.start(node.name)
+                    status[node.name], notes[node.name] = self._execute(node, run_dir, progress)
+                display.finish(node.name, status[node.name], notes[node.name])
 
         comparisons = {}
         for node in self.nodes.values():
@@ -120,7 +125,7 @@ class Pipeline:
         print(f"Report: {run_dir / 'report.md'}")
         return run_dir, status, comparisons
 
-    def _execute(self, node, run_dir):
+    def _execute(self, node, run_dir, progress=None):
         out = run_dir / node.name / "output"
         out.mkdir(parents=True)
         paths = [run_dir / i.name / "output" if isinstance(i, Node) else i for i in node.inputs]
@@ -130,11 +135,15 @@ class Pipeline:
             node_input.mkdir()
             for i, p in zip(node.inputs, paths):
                 (node_input / (i.name if isinstance(i, Node) else p.name)).symlink_to(p.resolve())
+        params = dict(node.params)
+        # A stage that accepts `progress` gets a progress(done, total) function to call as it works.
+        if progress and "progress" not in params and "progress" in inspect.signature(node.fn).parameters:
+            params["progress"] = progress
         t0 = time.time()
         with open(run_dir / node.name / "log.txt", "w") as log, \
                 contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             try:
-                node.fn(node_input, out, **node.params)
+                node.fn(node_input, out, **params)
             except Exception:
                 traceback.print_exc()
                 error = traceback.format_exc().strip().splitlines()[-1]

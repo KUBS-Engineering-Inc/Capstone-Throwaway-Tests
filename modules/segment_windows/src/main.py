@@ -1,4 +1,32 @@
+"""Find the display windows (B-mode, spectral / M-mode) in full ultrasound screens.
+
+Usage:
+    python modules/segment_windows/src/main.py [INPUT] [OUTPUT] [--no-images]
+
+INPUT is an image, a directory of images (searched recursively, e.g. the
+per-video folders extract_frames writes), or a bare filename inside
+data/segment_windows/input/ (default: all of data/segment_windows/input/).
+OUTPUT is a directory (default: data/segment_windows/output/).
+
+Writes OUTPUT/windows.csv: one row per window found, with its full-frame
+coordinates. Later stages read the frames plus this file and crop the window
+they need, so the crops don't have to be stored:
+
+    image                          mode      window  left top right bottom  top_depth_cm bottom_depth_cm cm_per_pixel
+    recording_oct_5/frame_001800.jpg  spectral  b_mode   ...                  0.0          4.0             0.0139
+    recording_oct_5/frame_001800.jpg  spectral  spectral ...
+
+`image` is the frame's path relative to INPUT. Coordinates are pixels,
+(left, top) inclusive and (right, bottom) exclusive, so the crop is
+frame[top:bottom, left:right]. The depth/scale columns are only filled for b_mode.
+Frames whose mode or depth can't be read are skipped and listed in the log.
+
+Unless --no-images is given (or run(..., save_images=False)), it also writes, per
+frame, the window crops ({stem}_{window}.png), the B-mode scale
+({stem}_b_mode_scale.json) and an annotated copy (annotated_{name}) for inspection.
+"""
 import argparse
+import csv
 import json
 from pathlib import Path
 
@@ -18,6 +46,10 @@ from ocr_engine import determine_b_mode_depth_cm, determine_mode
 from window_extractor import extract_windows
 
 
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+CSV_FIELDS = ["image", "mode", "window", "left", "top", "right", "bottom",
+              "top_depth_cm", "bottom_depth_cm", "cm_per_pixel"]
+
 BOX_COLORS = {
     "b_mode": (0, 0, 255),
     "spectral": (0, 255, 0),
@@ -33,8 +65,8 @@ def _save_image(path, image):
     print(f"[save_image] Successfully saved: {path}")
 
 
-def _b_mode_scale_metadata(filename, mode, bottom_depth_cm):
-    """Build compact depth scale metadata for the extracted B-mode crop."""
+def _b_mode_scale_metadata(mode, bottom_depth_cm):
+    """Build compact depth scale metadata for the B-mode window."""
     bottom_tick_y = (
         B_MODE_FULL_BOTTOM_TICK
         if mode == "b_only"
@@ -45,7 +77,6 @@ def _b_mode_scale_metadata(filename, mode, bottom_depth_cm):
     cm_per_pixel = depth_distance_cm / pixel_distance
 
     return {
-        "b_mode_crop": f"{Path(filename).stem}_b_mode.png",
         "cm_per_pixel": cm_per_pixel,
         "horizontal_pixel_spacing_equals_vertical": True,
         "top_depth_cm": B_MODE_TOP_DEPTH_CM,
@@ -53,16 +84,12 @@ def _b_mode_scale_metadata(filename, mode, bottom_depth_cm):
     }
 
 
-def process_frame(filename):
-    """Detect active windows, save their crops, and save a labeled preview."""
-    image_path = ASSETS_DIR / filename
-    frame = cv2.imread(str(image_path))
-    if frame is None:
-        print(f"[process_frame] ERROR: cv2.imread returned None for {image_path}.")
-        raise FileNotFoundError(f"Could not load image: {image_path}")
-    print(
-        f"[process_frame] Loaded image shape={frame.shape}; height={frame.shape[0]}, width={frame.shape[1]}, channels={frame.shape[2]}, dtype={frame.dtype}."
-    )
+def segment_frame(frame):
+    """Return (mode, B-mode scale dict, {window name: (crop, (left, top, right, bottom))}).
+    Raises RuntimeError if the frame has the wrong size or OCR can't read it."""
+    height, width = frame.shape[:2]
+    if (width, height) != (FRAME_WIDTH, FRAME_HEIGHT):
+        raise RuntimeError(f"Expected a {FRAME_WIDTH}x{FRAME_HEIGHT} frame, got {width}x{height}.")
 
     # OCR the footer first. The resulting mode decides whether we expect only
     # B-mode or both B-mode and a lower spectral/M-mode window.
@@ -70,87 +97,109 @@ def process_frame(filename):
     b_mode_depth_cm = determine_b_mode_depth_cm(frame)
     windows = extract_windows(frame, mode)
     print(
-        f"[process_frame] Detected mode={mode!r}; B-mode depth={b_mode_depth_cm:g} cm; "
+        f"[segment_frame] Detected mode={mode!r}; B-mode depth={b_mode_depth_cm:g} cm; "
         f"windows extracted={list(windows)}."
     )
+    return mode, _b_mode_scale_metadata(mode, b_mode_depth_cm), windows
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"[process_frame] Output directory is ready: {OUTPUT_DIR}.")
 
+def _save_frame_images(out_dir, image_path, frame, windows, scale):
+    """Save each window crop, the B-mode scale JSON, and an annotated frame."""
+    out_dir.mkdir(parents=True, exist_ok=True)
     # Draw on a copy so the individual crop images and source frame stay clean.
     annotated = frame.copy()
-    output_paths = {}
-    image_stem = image_path.stem
+    stem = image_path.stem
 
     # Each entry contains an image crop and its (left, top, right, bottom)
     # coordinates in the original frame.
-    for window_name, (window_image, bounds) in windows.items():
-        x1, y1, x2, y2 = bounds
+    for window_name, (window_image, (x1, y1, x2, y2)) in windows.items():
         color = BOX_COLORS[window_name]
         label = window_name.replace("_", "-").upper()
-        print(
-            f"[process_frame] Annotating {label}: bounds "
-            f"(left={x1}, top={y1}, right={x2}, bottom={y2}), "
-            f"crop shape={window_image.shape}, box color (BGR)={color}."
-        )
-
         # The right and bottom values mark the far edge of the box; thickness
         # controls how many pixels wide the border is.
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 1)
-
         # Keep the text label inside the image if the box begins near its top.
-        cv2.putText(
-            annotated,
-            label,
-            (x1, max(y1 - 10, 20)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            color,
-            1,
-        )
+        cv2.putText(annotated, label, (x1, max(y1 - 10, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
+        _save_image(out_dir / f"{stem}_{window_name}.png", window_image)
 
-        # Save each active mode crop separately using a descriptive filename.
-        crop_path = OUTPUT_DIR / f"{image_stem}_{window_name}.png"
-        _save_image(crop_path, window_image)
-        output_paths[window_name] = crop_path
+    # Save the crop's scale as data alongside the image so measurement code
+    # run on the crops can convert pixel positions/distances to cm.
+    scale_path = out_dir / f"{stem}_b_mode_scale.json"
+    with scale_path.open("w", encoding="utf-8") as scale_file:
+        json.dump({"b_mode_crop": f"{stem}_b_mode.png", **scale}, scale_file, indent=2)
+        scale_file.write("\n")
+    _save_image(out_dir / f"annotated_{image_path.name}", annotated)
 
-        if window_name == "b_mode":
-            # Save the crop's scale as data alongside the image so downstream
-            # measurement code can convert pixel positions/distances to cm.
-            scale_data = _b_mode_scale_metadata(
-                image_path.name,
-                mode,
-                b_mode_depth_cm,
-            )
-            scale_path = OUTPUT_DIR / f"{image_stem}_b_mode_scale.json"
-            print(
-                f"[process_frame] B-mode depth scale: "
-                f"{scale_data['top_depth_cm']:g}-{scale_data['bottom_depth_cm']:g} cm "
-                f"({scale_data['cm_per_pixel']:.6f} cm/pixel)."
-            )
-            with scale_path.open("w", encoding="utf-8") as scale_file:
-                json.dump(scale_data, scale_file, indent=2)
-                scale_file.write("\n")
-            print(f"[process_frame] Saved B-mode scale metadata: {scale_path}")
-            output_paths["b_mode_scale"] = scale_path
 
-    # Save the annotated source frame after all active windows have been drawn.
-    annotated_path = OUTPUT_DIR / f"annotated_{image_path.name}"
-    _save_image(annotated_path, annotated)
-    output_paths["annotated"] = annotated_path
-    print(f"[process_frame] Complete. Output files: {output_paths}.")
-    return output_paths
+def list_images(path):
+    """[(image path, key)] where key is the path relative to `path` (or the file name)."""
+    path = Path(path)
+    if path.is_file():
+        return [(path, path.name)]
+    if path.is_dir():
+        return [(p, p.relative_to(path).as_posix()) for p in sorted(path.rglob("*"))
+                if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+    raise FileNotFoundError(f"Input not found: {path}")
+
+
+def run(input, output, save_images=True):
+    """Find the windows in every image under `input`; write windows.csv (and, with
+    `save_images`, crops and annotated frames) to `output`.
+    Returns the number of frames segmented."""
+    out_dir = Path(output)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    images = list_images(input)
+
+    rows, skipped = [], []
+    for image_path, key in images:
+        print(f"\n=== {key} ===")
+        frame = cv2.imread(str(image_path))
+        if frame is None:
+            skipped.append((key, "unreadable image"))
+            continue
+        try:
+            mode, scale, windows = segment_frame(frame)
+        except RuntimeError as e:
+            print(f"[run] Skipping {key}: {e}")
+            skipped.append((key, str(e)))
+            continue
+
+        for window_name, (_, (x1, y1, x2, y2)) in windows.items():
+            row = dict(image=key, mode=mode, window=window_name, left=x1, top=y1, right=x2, bottom=y2)
+            if window_name == "b_mode":
+                row.update(top_depth_cm=scale["top_depth_cm"], bottom_depth_cm=scale["bottom_depth_cm"],
+                           cm_per_pixel=round(scale["cm_per_pixel"], 8))
+            rows.append(row)
+        if save_images:
+            _save_frame_images(out_dir / Path(key).parent, image_path, frame, windows, scale)
+
+    with open(out_dir / "windows.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    segmented = len(images) - len(skipped)
+    print(f"\nDone: segmented {segmented} of {len(images)} image(s) -> {out_dir / 'windows.csv'}")
+    for key, reason in skipped:
+        print(f"  skipped {key}: {reason}")
+    return segmented
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("input", nargs="?", default=ASSETS_DIR,
+                        help="image, directory of images, or a filename inside data/segment_windows/input/ "
+                             "(default: all of data/segment_windows/input/)")
+    parser.add_argument("output", nargs="?", default=OUTPUT_DIR,
+                        help="output directory (default: data/segment_windows/output/)")
+    parser.add_argument("--no-images", action="store_true",
+                        help="only write windows.csv, not the crops and annotated frames")
+    args = parser.parse_args()
+    input_path = Path(args.input)
+    if not input_path.exists() and (ASSETS_DIR / input_path).exists():
+        input_path = ASSETS_DIR / input_path  # a bare filename, as the .bat file passes
+    run(input_path, args.output, save_images=not args.no_images)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Detect ultrasound display windows in a frame."
-    )
-    parser.add_argument(
-        "filename",
-        nargs="?",
-        default="b_spectral_20261005_000356.png",
-        help="Image filename inside data/segment_windows/input/.",
-    )
-    args = parser.parse_args()
-    process_frame(args.filename)
+    main()

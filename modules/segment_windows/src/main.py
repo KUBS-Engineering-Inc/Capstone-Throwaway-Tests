@@ -142,16 +142,19 @@ def list_images(path):
     raise FileNotFoundError(f"Input not found: {path}")
 
 
-def run(input, output, save_images=True):
+def run(input, output, save_images=True, progress=None):
     """Find the windows in every image under `input`; write windows.csv (and, with
     `save_images`, crops and annotated frames) to `output`.
+    `progress(done, total)`, if given, is called after each image.
     Returns the number of frames segmented."""
     out_dir = Path(output)
     out_dir.mkdir(parents=True, exist_ok=True)
     images = list_images(input)
 
     rows, skipped = [], []
-    for image_path, key in images:
+    for i, (image_path, key) in enumerate(images):
+        if progress:
+            progress(i, len(images))
         print(f"\n=== {key} ===")
         frame = cv2.imread(str(image_path))
         if frame is None:
@@ -173,6 +176,8 @@ def run(input, output, save_images=True):
         if save_images:
             _save_frame_images(out_dir / Path(key).parent, image_path, frame, windows, scale)
 
+    if progress:
+        progress(len(images), len(images))
     with open(out_dir / "windows.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()

@@ -25,7 +25,8 @@ Supported videos: `.mp4`, `.mov`, `.avi`, `.mkv`. Videos are not committed
 (they are in `.gitignore`); put them in `data/extract_frames/input/`, e.g.
 `recording_oct_5.mp4`.
 
-From Python, or from the harness, call `run(input, output, every=1, fps=None, ext="jpg", start=None, end=None)`.
+From Python, or from the harness, call `run(input, output, every=1, fps=None, ext="jpg", start=None, end=None, progress=None)`.
+`progress(done, total)`, if given, is called with the frames read so far in the current video.
 The harness's vessels pipeline runs it with `fps=1`.
 
 ## What it Does

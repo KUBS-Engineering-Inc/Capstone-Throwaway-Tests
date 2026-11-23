@@ -24,7 +24,7 @@ python modules/segment_windows/src/main.py
 ```
 To process a specific file, append its filename (or any image path or folder) to the command. A second argument sets the output folder, and `--no-images` writes only `windows.csv`.
 
-From Python, or from the harness, call `run(input, output, save_images=True)`. The harness's vessels pipeline runs it on the extracted video frames with `save_images=False`, so only the coordinates are written.
+From Python, or from the harness, call `run(input, output, save_images=True, progress=None)`; `progress(done, total)`, if given, is called as images are processed. The harness's vessels pipeline runs it on the extracted video frames with `save_images=False`, so only the coordinates are written.
 
 ## What it Does
 **Input**: An image, a folder of images (searched recursively, e.g. the per-video folders `extract_frames` writes), or a filename inside `data/segment_windows/input`. With no argument, every image in `data/segment_windows/input`.

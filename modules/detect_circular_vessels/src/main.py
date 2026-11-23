@@ -4,11 +4,16 @@ Usage:
     python modules/detect_circular_vessels/src/main.py [INPUT] [OUTPUT] [--method contour|hough] [--show]
                             [--min-circularity C] [--min-aspect A] [--min-contrast K]
 
-INPUT is an image, or a directory of images, already cropped to the B-mode view
-(default: data/detect_circular_vessels/input/).
+INPUT is one of (default: data/detect_circular_vessels/input/):
+  - an image, or a directory of images, already cropped to the B-mode view;
+  - full frames plus segment_windows' windows.csv: a directory holding a windows.csv
+    and the frames it names, or (as the harness passes it) a directory with two
+    folders, one holding windows.csv and the other the frames. Each frame is
+    cropped to its B-mode window before detection.
 OUTPUT is a directory (default: data/detect_circular_vessels/output/, created if needed). Every input image is
-saved there with the overlay drawn on it (same filename), and all detections go
-to OUTPUT/detections.csv (coordinates are in input-image pixels).
+saved there with the overlay drawn on it (same name; the B-mode crop for frames),
+and all detections go to OUTPUT/detections.csv (coordinates are in pixels of the
+image or B-mode crop; add the window's left/top to get frame pixels).
 Overlay: yellow = traced lumen outline, red cross = centre, number = score.
 --show also displays each overlay in a window (any key: next, q: close the window).
 
@@ -259,39 +264,89 @@ def list_images(path):
     raise FileNotFoundError(f"Input not found: {path}")
 
 
+def find_windows(path):
+    """(windows.csv, frames directory) if `path` holds segment_windows output, else None.
+
+    Either `path` holds windows.csv next to the frames, or it holds two folders
+    (the harness's layout for a node with two inputs): one with windows.csv and
+    one with the frames."""
+    path = Path(path)
+    if not path.is_dir():
+        return None
+    if (path / "windows.csv").is_file():
+        return path / "windows.csv", path
+    found = sorted(path.glob("*/windows.csv"))
+    if not found:
+        return None
+    others = [d for d in sorted(path.iterdir()) if d.is_dir() and d != found[0].parent]
+    if len(others) != 1:
+        raise ValueError(f"{path}: expected one frames folder next to {found[0].parent.name}/, found {len(others)}")
+    return found[0], others[0]
+
+
+def load_inputs(path, window="b_mode"):
+    """[(name, read)] for every input image, where read() loads the image (None if
+    unreadable). With segment_windows output, every frame is cropped to its
+    `window`; name is the frame's relative path."""
+    windows = find_windows(path)
+    if windows is None:
+        return [(p.name, lambda p=p: cv2.imread(str(p))) for p in list_images(path)]
+    csv_path, frames_dir = windows
+    with open(csv_path, newline="") as f:
+        rows = [r for r in csv.DictReader(f) if r["window"] == window]
+    print(f"Reading {len(rows)} {window} window(s) from {csv_path}, frames in {frames_dir}")
+    return [(r["image"], _crop_loader(frames_dir / r["image"], r)) for r in rows]
+
+def _crop_loader(frame_path, row):
+    """A function that reads the frame and crops it to the window in `row`."""
+    def read():
+        frame = cv2.imread(str(frame_path))
+        if frame is None:
+            return None
+        left, top, right, bottom = (int(row[k]) for k in ("left", "top", "right", "bottom"))
+        return frame[top:bottom, left:right]
+    return read
+
+
+
 def run(input, output):
-    """Detect circular vessels in every image under `input`; write overlays and
-    detections.csv to `output`, using the settings at the top of this file.
+    """Detect circular vessels in every image under `input` (see the module
+    docstring for the accepted layouts); write overlays and detections.csv to
+    `output`, using the settings at the top of this file.
     Returns the number of images with a detection."""
-    images = list_images(input)
     thresholds = dict(min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_contrast=MIN_CONTRAST)
     detect = detect_hough if METHOD == "hough" else detect_contour
 
     # 1. Detect in every image.
-    detections = {}  # image path -> list of detections
-    for img_path in images:
-        image = cv2.imread(str(img_path))
+    images = {}      # name -> image
+    detections = {}  # name -> list of detections
+    inputs = load_inputs(input)
+    n_inputs = len(inputs)
+    for name, read in inputs:
+        image = read()
         if image is None:
-            print(f"Skipping unreadable image: {img_path}")
+            print(f"Skipping unreadable image: {name}")
             continue
-        detections[img_path] = detect(image, **thresholds)
-        print(f"{img_path.name}: {len(detections[img_path])} circular vessel(s)")
+        images[name] = image
+        detections[name] = detect(image, **thresholds)
+        print(f"{name}: {len(detections[name])} circular vessel(s)")
 
     # 2. Draw the detections on each image.
-    overlays = {}  # image file name -> annotated image
+    overlays = {}  # name -> annotated image
     showing = SHOW
-    for img_path, dets in detections.items():
-        overlays[img_path.name] = annotate(cv2.imread(str(img_path)), dets)
+    for name, dets in detections.items():
+        overlays[name] = annotate(images[name], dets)
         if showing:  # q/Esc closes the viewer; the remaining images are still drawn
-            showing = show_image(f"{img_path.name}: {len(dets)} vessel(s)", overlays[img_path.name])
+            showing = show_image(f"{name}: {len(dets)} vessel(s)", overlays[name])
     if SHOW:
         cv2.destroyAllWindows()
 
     # 3. Write the results.
-    rows = [{"image": img_path.name, **d} for img_path, dets in detections.items() for d in dets]
+    rows = [{"image": name, **d} for name, dets in detections.items() for d in dets]
     out_dir = Path(output)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, overlay in overlays.items():
+        (out_dir / name).parent.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(out_dir / name), overlay)
     fields = ["image", "cx", "cy", "radius", "major", "minor", "circularity", "aspect", "contrast", "color_flow", "score"]
     with open(out_dir / "detections.csv", "w", newline="") as f:
@@ -300,7 +355,7 @@ def run(input, output):
         writer.writerows(rows)
 
     hits = len({r["image"] for r in rows})
-    print(f"Done: {hits} of {len(images)} image(s) had circular vessels -> {out_dir}/")
+    print(f"Done: {hits} of {n_inputs} image(s) had circular vessels -> {out_dir}/")
     return hits
 
 
@@ -308,7 +363,7 @@ def main():
     global METHOD, MIN_CIRCULARITY, MIN_ASPECT, MIN_CONTRAST, SHOW
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("input", nargs="?", default=DATA_DIR / "input",
-                   help="image file or directory of images, cropped to the B-mode view (default: data/detect_circular_vessels/input/)")
+                   help="B-mode images, or frames + segment_windows' windows.csv (default: data/detect_circular_vessels/input/)")
     p.add_argument("output", nargs="?", default=DATA_DIR / "output", help="output directory (default: data/detect_circular_vessels/output/)")
     p.add_argument("--method", choices=["contour", "hough"], default=METHOD,
                    help=f"contour: threshold-sweep segmentation; hough: cv2.HoughCircles (default: {METHOD})")

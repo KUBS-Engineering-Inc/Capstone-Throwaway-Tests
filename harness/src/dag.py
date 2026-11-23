@@ -32,16 +32,25 @@ def load_stage(name, root=MODULES_DIR):
     """Import the stage modules/<name>/src/main.py as a module called `name`.
 
     Every stage's code is src/main.py, so stages are loaded by file path under
-    their folder name rather than imported as `main`. The stage's src/ is put on
-    sys.path so it can import helper files next to main.py.
+    their folder name rather than imported as `main`. The stage's src/ is on
+    sys.path while it loads so it can import helper files next to main.py.
+    Those helpers are then dropped from the module cache, so two stages can
+    each have their own `config.py` without one getting the other's.
     """
-    src = Path(root) / name / "src"
-    if str(src) not in sys.path:
-        sys.path.insert(0, str(src))
-    spec = importlib.util.spec_from_file_location(name, src / "main.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
+    src = (Path(root) / name / "src").resolve()
+    before = set(sys.modules)
+    sys.path.insert(0, str(src))
+    try:
+        spec = importlib.util.spec_from_file_location(name, src / "main.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(src))
+        for mod in set(sys.modules) - before - {name}:
+            file = getattr(sys.modules[mod], "__file__", None)
+            if file and Path(file).resolve().is_relative_to(src):
+                del sys.modules[mod]
     return module
 
 

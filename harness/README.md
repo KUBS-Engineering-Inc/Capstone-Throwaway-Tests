@@ -90,8 +90,8 @@ Every run re-runs every stage. If a stage fails, the stages downstream of it are
    crop_view = load_stage("crop_view")   # imports modules/crop_view/src/main.py
    crops = p.node("crop_view", crop_view.run, inputs=[frames], compare=files_diff())
    ```
-   Helper files next to `main.py` can be imported normally (`from utils import x`);
-   give them names that won't clash with other stages' helpers.
+   Helper files next to `main.py` can be imported normally (`from config import x`).
+   Each stage gets its own copies, so two stages can both have a `config.py`.
 
 ## Comparators
 

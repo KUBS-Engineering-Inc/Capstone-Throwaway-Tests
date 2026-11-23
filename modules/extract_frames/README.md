@@ -10,6 +10,7 @@ From the repo root, with the shared environment active (`source .venv/bin/activa
 python modules/extract_frames/src/main.py                     # data/extract_frames/input/ -> output/
 python modules/extract_frames/src/main.py INPUT OUTPUT        # INPUT: one video or a folder of videos
 python modules/extract_frames/src/main.py --fps 1             # save 1 frame per second of video
+python modules/extract_frames/src/main.py --start 60 --end 70  # only the section from 60 s to 70 s
 ```
 
 | Flag | Default | Meaning |
@@ -17,12 +18,14 @@ python modules/extract_frames/src/main.py --fps 1             # save 1 frame per
 | `--every N` | 1 | save every Nth frame |
 | `--fps F` | off | save about F frames per second of video (overrides `--every`) |
 | `--ext jpg\|png` | `jpg` | image format |
+| `--start SEC` | 0 | start of the section to extract, in seconds |
+| `--end SEC` | end of video | end of the section (exclusive), in seconds |
 
 Supported videos: `.mp4`, `.mov`, `.avi`, `.mkv`. Videos are not committed
 (they are in `.gitignore`); put them in `data/extract_frames/input/`, e.g.
 `recording_oct_5.mp4`.
 
-From Python, or from the harness, call `run(input, output, every=1, fps=None, ext="jpg")`.
+From Python, or from the harness, call `run(input, output, every=1, fps=None, ext="jpg", start=None, end=None)`.
 The harness's vessels pipeline runs it with `fps=1`.
 
 ## What it Does
@@ -32,8 +35,11 @@ Splits each video into individual frame images for the later stages.
 1. List the videos: INPUT is one video file, or every video in a folder (sorted by name).
 2. Open each video with `cv2.VideoCapture` and read its frame rate and frame count.
 3. If `--fps` is given, convert it to "every Nth frame": N = round(video fps / target fps).
-4. Read the frames in order and save every Nth one.
-5. Print how many frames were saved; `run()` returns the total over all videos.
+4. If `--start` is given, seek to that frame; stop before the `--end` frame.
+   Frames are still numbered from the start of the video.
+5. Read the frames in order and save every Nth one (by index in the full video,
+   so a section saves the same frames a full run would).
+6. Print how many frames were saved; `run()` returns the total over all videos.
 
 Files written to OUTPUT, one folder per video:
 

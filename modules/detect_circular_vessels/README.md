@@ -1,6 +1,6 @@
 # Detect Circular Vessels
 
-Finds vessels cut crosswise (transverse view) in a B-mode image that is already cropped to the view, and writes each vessel's outline, size and score.
+Finds vessels cut crosswise (transverse view) in the B-mode view, and writes each vessel's outline, size and score.
 
 ## How to Run
 
@@ -8,12 +8,19 @@ From the repo root, with the shared environment active (`source .venv/bin/activa
 
 ```bash
 python modules/detect_circular_vessels/src/main.py                    # data/detect_circular_vessels/input/ -> output/
-python modules/detect_circular_vessels/src/main.py INPUT OUTPUT       # INPUT: one image or a folder of images
+python modules/detect_circular_vessels/src/main.py INPUT OUTPUT       # INPUT: one image, a folder of images, or frames + windows.csv
 python modules/detect_circular_vessels/src/main.py --show             # also show each result in a window
 ```
 
-Input images must already be cropped to the B-mode view (the crop comes from an
-earlier stage). Optional flags:
+INPUT is either images already cropped to the B-mode view, or full frames plus
+`segment_windows`' `windows.csv`: a folder holding `windows.csv` next to the
+frames, or a folder with two subfolders, one holding `windows.csv` and the other
+the frames (the layout the harness passes). Each frame is then cropped to its
+B-mode window before detection; output images are the annotated crops, and
+`detections.csv` is keyed by the frame's relative path. Coordinates are in crop
+pixels; add the window's `left`/`top` from `windows.csv` to get frame pixels.
+
+Optional flags:
 
 | Flag | Default | Meaning |
 |---|---|---|

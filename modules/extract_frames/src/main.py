@@ -22,7 +22,7 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "extract_frames"  # mo
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
-def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg", start=None, end=None):
+def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg", start=None, end=None, progress=None):
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {video_path}")
@@ -36,6 +36,7 @@ def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg", sta
         raise RuntimeError(f"Can't select a time range: {video_path} reports no frame rate")
     first = round(start * src_fps) if start else 0
     stop = round(end * src_fps) if end is not None else None  # exclusive
+    to_read = max(0, min(stop if stop is not None else total, total) - first)
     if first:
         cap.set(cv2.CAP_PROP_POS_FRAMES, first)
 
@@ -56,6 +57,8 @@ def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg", sta
             cv2.imwrite(str(out_dir / f"frame_{idx:06d}.{ext}"), frame)
             saved += 1
         idx += 1
+        if progress:
+            progress(idx - first, to_read)
 
     cap.release()
     print(f"Done: saved {saved} of {idx - first} frames read.")
@@ -71,13 +74,14 @@ def list_videos(path):
     raise FileNotFoundError(f"Input not found: {path}")
 
 
-def run(input, output, every=1, fps=None, ext="jpg", start=None, end=None):
+def run(input, output, every=1, fps=None, ext="jpg", start=None, end=None, progress=None):
     """Extract frames from every video under `input` into `output`/<video name>/.
     `start`/`end` (seconds) limit it to a section of each video.
-    Returns the total number of frames saved."""
+    `progress(done, total)`, if given, is called with frames read so far in the
+    current video. Returns the total number of frames saved."""
     if start is not None and end is not None and end <= start:
         raise ValueError(f"end ({end}) must be after start ({start})")
-    return sum(extract_frames(video, Path(output) / video.stem, every, fps, ext, start, end)
+    return sum(extract_frames(video, Path(output) / video.stem, every, fps, ext, start, end, progress)
                for video in list_videos(input))
 
 

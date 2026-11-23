@@ -241,17 +241,20 @@ def candidate_rows(name, center, candidates, cm_per_pixel):
     return rows
 
 
-def run(input, output, save_previews=True):
+def run(input, output, save_previews=True, progress=None):
     """Measure lumen candidates in every image under `input` (see the module
     docstring for the accepted layouts); write diameters.csv (and, with
     `save_previews`, diagnostic images) to `output`.
+    `progress(done, total)`, if given, is called after each image.
     Returns the number of images measured."""
     out_dir = Path(output)
     out_dir.mkdir(parents=True, exist_ok=True)
     rows, skipped = [], []
     inputs = load_inputs(input)
     n_inputs = len(inputs)
-    for name, read, cm_per_pixel in inputs:
+    for i, (name, read, cm_per_pixel) in enumerate(inputs):
+        if progress:
+            progress(i, n_inputs)
         print(f"\n=== B-mode cursor-anchored lumen analysis: {name} ===")
         image = read()
         if image is None:
@@ -267,6 +270,8 @@ def run(input, output, save_previews=True):
             continue
         rows += candidate_rows(name, detection.cursor_center, candidates, cm_per_pixel)
 
+    if progress:
+        progress(n_inputs, n_inputs)
     with open(out_dir / "diameters.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()

@@ -309,10 +309,11 @@ def _crop_loader(frame_path, row):
 
 
 
-def run(input, output):
+def run(input, output, progress=None):
     """Detect circular vessels in every image under `input` (see the module
     docstring for the accepted layouts); write overlays and detections.csv to
     `output`, using the settings at the top of this file.
+    `progress(done, total)`, if given, is called as images are processed.
     Returns the number of images with a detection."""
     thresholds = dict(min_circularity=MIN_CIRCULARITY, min_aspect=MIN_ASPECT, min_contrast=MIN_CONTRAST)
     detect = detect_hough if METHOD == "hough" else detect_contour
@@ -322,7 +323,9 @@ def run(input, output):
     detections = {}  # name -> list of detections
     inputs = load_inputs(input)
     n_inputs = len(inputs)
-    for name, read in inputs:
+    for i, (name, read) in enumerate(inputs):
+        if progress:
+            progress(i, n_inputs)
         image = read()
         if image is None:
             print(f"Skipping unreadable image: {name}")
@@ -330,6 +333,9 @@ def run(input, output):
         images[name] = image
         detections[name] = detect(image, **thresholds)
         print(f"{name}: {len(detections[name])} circular vessel(s)")
+
+    if progress:
+        progress(n_inputs, n_inputs)
 
     # 2. Draw the detections on each image.
     overlays = {}  # name -> annotated image

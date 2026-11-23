@@ -32,7 +32,8 @@ Optional flags:
 
 The same defaults are the constants at the top of `src/main.py` (`METHOD`,
 `MIN_CIRCULARITY`, `MIN_ASPECT`, `MIN_CONTRAST`, `SHOW`). From Python, or from
-the harness, call `run(input, output)`; it uses those constants.
+the harness, call `run(input, output, progress=None)`; it uses those constants.
+`progress(done, total)`, if given, is called as images are processed.
 
 ## What it Does
 

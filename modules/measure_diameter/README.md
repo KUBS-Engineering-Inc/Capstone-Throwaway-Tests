@@ -24,7 +24,7 @@ python modules/measure_diameter/src/main.py
 ```
 Again, if you need a specific file, append its file name (or any image path or folder) to the end of the line. A second argument sets the output folder, and `--no-previews` writes only `diameters.csv`.
 
-From Python, or from the harness, call `run(input, output, save_previews=True)`. The harness's vessels pipeline runs it on the extracted video frames, cropped to the B-mode window with `segment_windows`' `windows.csv`, with `save_previews=False`.
+From Python, or from the harness, call `run(input, output, save_previews=True, progress=None)`; `progress(done, total)`, if given, is called as images are processed. The harness's vessels pipeline runs it on the extracted video frames, cropped to the B-mode window with `segment_windows`' `windows.csv`, with `save_previews=False`.
 
 ## What it Does
 **Input**: One of:

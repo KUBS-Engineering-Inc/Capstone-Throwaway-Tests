@@ -107,7 +107,7 @@ class Pipeline:
                 except Exception as e:
                     comparisons[node.name] = Comparison(False, f"comparison error: {e!r}")
 
-        (run_dir / "report.md").write_text(_report(self.name, run_id, status, notes, baseline, comparisons))
+        (run_dir / "report.md").write_text(_report(self, run_id, status, notes, baseline, comparisons))
         print(f"Report: {run_dir / 'report.md'}")
         return run_dir, status, comparisons
 
@@ -152,8 +152,8 @@ def set_baseline(out_root, run_id, name="baseline"):
 
 
 def _report(pipeline, run_id, status, notes, baseline, comparisons):
-    lines = [f"# Run {run_id} — pipeline `{pipeline}`", "", "| node | status | |", "|---|---|---|"]
-    lines += [f"| {n} | {s} | {notes[n]} |" for n, s in status.items()]
+    lines = [f"# Run {run_id} — pipeline `{pipeline.name}`", "", "| node | status | params | |", "|---|---|---|---|"]
+    lines += [f"| {n} | {s} | {_params(pipeline.nodes[n].params)} | {notes[n]} |" for n, s in status.items()]
     if comparisons:
         lines += ["", f"## Compared to `{baseline.name}`", ""]
         for name, c in comparisons.items():
@@ -162,3 +162,7 @@ def _report(pipeline, run_id, status, notes, baseline, comparisons):
             if len(c.details) > 20:
                 lines.append(f"    - … {len(c.details) - 20} more")
     return "\n".join(lines) + "\n"
+
+
+def _params(params):
+    return ", ".join(f"{k}={v!r}" for k, v in params.items()) or "—"

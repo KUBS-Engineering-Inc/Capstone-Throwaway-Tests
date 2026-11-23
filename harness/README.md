@@ -6,18 +6,64 @@ against a baseline.
 ## Usage
 
 ```
-source .venv/bin/activate                                       # from the repo root
-python harness/src/main.py run harness/pipelines/vessels.py     # run + compare to "baseline" if set
-python harness/src/main.py baseline <run_id>                    # make a run the baseline
-python harness/src/main.py order harness/pipelines/vessels.py   # list stages in run order
+source .venv/bin/activate                                          # from the repo root
+python harness/src/main.py run harness/conditions/vessels_section.json  # run under a conditions file
+python harness/src/main.py run harness/pipelines/vessels.py        # run the pipeline as defined
+python harness/src/main.py baseline <run_id>                       # make a run the baseline
+python harness/src/main.py order harness/pipelines/vessels.py      # list stages in run order
 ```
 
-Flags for `run`: `--run-id NAME`, `--compare-to RUN_OR_BASELINE`, `--fail-on-diff`.
-Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `--fail-on-diff`).
+`run` also takes `--run-id NAME` (default: a timestamp).
+Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `"fail_on_diff": true`).
 
 Each run writes `harness/output/runs/<run_id>/`:
 - `<node>/output/` — what the stage wrote; `<node>/log.txt` — what it printed
-- `report.md` — status, timings, failures, baseline comparison
+- `report.md` — status, params used, timings, failures, baseline comparison
+- `conditions.json` — the conditions the run used
+
+## Conditions files
+
+A conditions file is JSON that says what to run and how. Keep them in
+`harness/conditions/`. Example (`harness/conditions/vessels_section.json`):
+
+```json
+{
+  "pipeline": "harness/pipelines/vessels.py",
+  "start": "1:00",
+  "end": "1:10",
+  "params": {
+    "extract_frames": {"fps": 1}
+  },
+  "compare_to": "baseline",
+  "fail_on_diff": false
+}
+```
+
+Only `pipeline` is required. Paths are relative to the repo root.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `pipeline` | — | pipeline `.py` file to run |
+| `start`, `end` | whole video | run on a section of the video; seconds (`75`, `75.5`) or `"m:ss"` (`"1:15"`). Either can be left out. Passed to every node whose stage takes `start`/`end` params (today: `extract_frames`). |
+| `params` | none | per-node param overrides, `{"node": {"param": value}}`. `null` means `None`, e.g. `"fps": null` saves every frame. |
+| `compare_to` | `"baseline"` | baseline name or run id to compare against |
+| `fail_on_diff` | `false` | exit with status 2 if any output differs from it |
+
+Unknown keys, unknown node names, unreadable times or an `end` before `start`
+stop the run before anything executes.
+
+### Running on a section of the video
+
+Frames keep their index in the full video (`frame_001800.jpg` is 60 s in), so
+section results line up with a full run. Compared against a full-video baseline,
+the frames outside the section show up as "only in other"; to compare sections,
+baseline one under its own name and point `compare_to` at it:
+
+```
+python harness/src/main.py run harness/conditions/vessels_section.json --run-id s60
+python harness/src/main.py baseline s60 --name s60
+# then set "compare_to": "s60" in the conditions file
+```
 
 Every run re-runs every stage. If a stage fails, the stages downstream of it are skipped.
 

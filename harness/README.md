@@ -84,6 +84,9 @@ Every run re-runs every stage. If a stage fails, the stages downstream of it are
    - Be deterministic: same input + params -> same output.
 3. Write results the next stage (and comparators) can read — ideally a CSV keyed
    by image name, plus any images.
+   A stage that works on one display window (e.g. the B-mode view) takes
+   `inputs=[frames, windows]` and crops each frame using `segment_windows`'
+   `windows.csv`, as `detect_circular_vessels` and `measure_diameter` do.
 4. Add any new third-party dependency, pinned, to the root `requirements.txt`.
 5. Load the stage and add a node in the pipeline file:
    ```python

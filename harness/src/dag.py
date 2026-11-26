@@ -10,6 +10,8 @@ Each run writes, under the harness output directory:
     runs/<run_id>/report.md        status, timings, failures, comparisons
     baselines/<name>               link to the run used as that baseline
 <step> is the node's step in run order (see Pipeline.steps), two digits.
+With layout="frames" the stage folders are split up by frame afterwards; see
+layout.py.
 """
 import contextlib
 import graphlib
@@ -26,8 +28,10 @@ from pathlib import Path
 from typing import Callable
 
 from compare import Comparison
-from layout import LOG_NAME, stage_dir
+from layout import LOG_NAME, LOGS, assemble_stage, frame_keys, is_frame_layout, split_by_frame, stage_dir
 from progress import Display
+
+LAYOUTS = ("stages", "frames")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/dag.py -> repo root
 MODULES_DIR = REPO_ROOT / "modules"
@@ -97,17 +101,21 @@ class Pipeline:
         """{node name: its folder name in a run, <step>_<node>}."""
         return {node.name: f"{step:02d}_{node.name}" for step, node in self.steps()}
 
-    def run(self, out_root, run_id=None, baseline=None):
+    def run(self, out_root, run_id=None, baseline=None, layout="stages"):
         """Run every node in dependency order, then compare each node that has a
-        `compare` against the same node in `baseline` (a run directory).
+        `compare` against the same node in `baseline` (a run directory, in
+        either layout). With layout="frames", then split the results by frame.
         Returns (run_dir, statuses, comparisons)."""
+        if layout not in LAYOUTS:
+            raise ValueError(f"layout must be one of {LAYOUTS}, got {layout!r}")
         run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = Path(out_root) / "runs" / run_id
         run_dir.mkdir(parents=True)  # fails if the run already exists
         order = list(graphlib.TopologicalSorter({n: n.upstream for n in self.nodes.values()}).static_order())
         folders = self.folders()
         dirs = {name: run_dir / folder for name, folder in folders.items()}
-        log_paths = {name: f"{folder}/{LOG_NAME}" for name, folder in folders.items()}
+        log_paths = {name: (f"{LOGS}/{folder}.txt" if layout == "frames" else f"{folder}/{LOG_NAME}")
+                     for name, folder in folders.items()}
 
         status, notes = {}, {}
         # Logs and multi-input links stay out of the stage folders while the
@@ -131,7 +139,7 @@ class Pipeline:
                 if not (node.compare and status[node.name] == "ok" and baseline):
                     continue
                 try:
-                    base = stage_dir(baseline, node.name)
+                    base = _stage_view(baseline, node.name, tmp / "baseline" / node.name)
                     if base is not None:
                         comparisons[node.name] = node.compare(dirs[node.name], base)
                 except Exception as e:
@@ -143,7 +151,11 @@ class Pipeline:
                 shutil.move(run_dir / ".logs" / f"{name}.txt", d / LOG_NAME)
         shutil.rmtree(run_dir / ".logs", ignore_errors=True)
 
-        (run_dir / "report.md").write_text(_report(self, run_id, status, notes, baseline, comparisons))
+        if layout == "frames":
+            sources = [dirs[n.name] for n in self.nodes.values() if not n.upstream and dirs[n.name].is_dir()]
+            split_by_frame(run_dir, {folders[n]: d for n, d in dirs.items()}, frame_keys(sources))
+
+        (run_dir / "report.md").write_text(_report(self, run_id, status, notes, baseline, comparisons, layout))
         print(f"Report: {run_dir / 'report.md'}")
         return run_dir, status, comparisons
 
@@ -174,6 +186,15 @@ class Pipeline:
         return "ok", f"{time.time() - t0:.1f}s"
 
 
+def _stage_view(run_dir, name, scratch):
+    """Node `name`'s results in a run of either layout, as a stage folder: the
+    folder itself, or for a frame-layout run a copy rebuilt in `scratch`.
+    None if the run has nothing for that node."""
+    if is_frame_layout(run_dir):
+        return assemble_stage(run_dir, name, scratch)
+    return stage_dir(run_dir, name)
+
+
 def find_run(out_root, name):
     """A baseline name (baselines/<name>) or a run id (runs/<id>) -> run directory, or None."""
     for p in (Path(out_root) / "baselines" / name, Path(out_root) / "runs" / name):
@@ -192,8 +213,10 @@ def set_baseline(out_root, run_id, name="baseline"):
     link.symlink_to(run_dir.resolve())
 
 
-def _report(pipeline, run_id, status, notes, baseline, comparisons):
-    lines = [f"# Run {run_id} — pipeline `{pipeline.name}`", "", "| node | status | params | |", "|---|---|---|---|"]
+def _report(pipeline, run_id, status, notes, baseline, comparisons, layout="stages"):
+    lines = [f"# Run {run_id} — pipeline `{pipeline.name}`", "",
+             f"Layout: {'by frame (frames/, shared/, logs/)' if layout == 'frames' else 'by stage'}", "",
+             "| node | status | params | |", "|---|---|---|---|"]
     lines += [f"| {n} | {s} | {_params(pipeline.nodes[n].params)} | {notes[n]} |" for n, s in status.items()]
     if comparisons:
         lines += ["", f"## Compared to `{baseline.name}`", ""]

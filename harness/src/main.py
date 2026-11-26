@@ -23,6 +23,10 @@ Only "pipeline" is required. Paths are relative to the repo root.
                 (e.g. "fps": null saves every frame).
   compare_to    baseline name or run id to compare against (default "baseline").
   fail_on_diff  exit with status 2 if any output differs from it (default false).
+  layout        "stages" (default): one folder per stage, <step>_<node>/.
+                "frames": one folder per frame, frames/<video>/<frame>/, holding
+                what every stage produced for it (see layout.py); also turns on
+                every stage's preview images unless params say otherwise.
 
 Running a PIPELINE.py directly is the same as a conditions file holding only
 "pipeline". A copy of the conditions is saved in the run as conditions.json.
@@ -37,11 +41,13 @@ import json
 import runpy
 from pathlib import Path
 
-from dag import Pipeline, find_run, set_baseline
+from dag import LAYOUTS, Pipeline, find_run, set_baseline
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/main.py -> repo root
 DEFAULT_OUT = REPO_ROOT / "harness" / "output"
-CONDITION_KEYS = {"pipeline", "start", "end", "params", "compare_to", "fail_on_diff"}
+CONDITION_KEYS = {"pipeline", "start", "end", "params", "compare_to", "fail_on_diff", "layout"}
+# Params that switch a stage's diagnostic images on; the frames layout sets them to True.
+PREVIEW_PARAMS = ("save_previews", "save_images")
 
 
 def load_pipeline(path):
@@ -103,6 +109,12 @@ def param_overrides(params):
     return [(node, k, v) for node, ps in params.items() for k, v in ps.items()]
 
 
+def preview_overrides(pipeline):
+    """Turn on preview images for every node whose stage can write them."""
+    return [(n.name, p, True) for n in pipeline.nodes.values()
+            for p in PREVIEW_PARAMS if p in inspect.signature(n.fn).parameters]
+
+
 def apply_overrides(pipeline, overrides):
     for node, param, value in overrides:
         if node not in pipeline.nodes:
@@ -118,6 +130,7 @@ def main():
     r = sub.add_parser("run", help="run a pipeline under the given conditions")
     r.add_argument("conditions", type=Path, help="conditions .json file, or a pipeline .py file to run as defined")
     r.add_argument("--run-id", help="name for this run (default: timestamp)")
+    r.add_argument("--layout", choices=LAYOUTS, help="output layout; overrides the conditions file (default: stages)")
 
     b = sub.add_parser("baseline", help="mark a run as a baseline")
     b.add_argument("run_id")
@@ -131,14 +144,21 @@ def main():
         cond = load_conditions(a.conditions)
         pipeline = load_pipeline(REPO_ROOT / cond["pipeline"])
         start, end = parse_time(cond.get("start"), "start"), parse_time(cond.get("end"), "end")
-        apply_overrides(pipeline, section_overrides(pipeline, start, end) + param_overrides(cond.get("params", {})))
+        if a.layout:
+            cond["layout"] = a.layout
+        layout = cond.get("layout", "stages")
+        if layout not in LAYOUTS:
+            raise SystemExit(f"layout: expected one of {', '.join(LAYOUTS)}, got {layout!r}")
+        previews = preview_overrides(pipeline) if layout == "frames" else []
+        apply_overrides(pipeline, previews + section_overrides(pipeline, start, end)
+                        + param_overrides(cond.get("params", {})))
         compare_to = cond.get("compare_to", "baseline")
         baseline = find_run(a.out, compare_to)
         if baseline is None and compare_to != "baseline":
             raise SystemExit(f"No baseline or run named {compare_to!r}")
         if baseline is None:
             print("No baseline yet; set one with: python harness/src/main.py baseline <run_id>")
-        run_dir, status, comparisons = pipeline.run(a.out, run_id=a.run_id, baseline=baseline)
+        run_dir, status, comparisons = pipeline.run(a.out, run_id=a.run_id, baseline=baseline, layout=layout)
         (run_dir / "conditions.json").write_text(json.dumps(cond, indent=2) + "\n")
         if any(s == "failed" for s in status.values()):
             raise SystemExit(1)

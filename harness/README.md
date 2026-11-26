@@ -13,7 +13,8 @@ python harness/src/main.py baseline <run_id>                       # make a run 
 python harness/src/main.py order harness/pipelines/vessels.py      # list stages in run order
 ```
 
-`run` also takes `--run-id NAME` (default: a timestamp).
+`run` also takes `--run-id NAME` (default: a timestamp) and `--layout stages|frames`
+(overrides the conditions file; see [Output layout](#output-layout)).
 Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `"fail_on_diff": true`).
 
 While it runs, the terminal shows a live row per node: a spinner and timer while
@@ -22,13 +23,14 @@ progress, and ✓ / ✗ / - (skipped) when done, with the error or reason cut to
 When the output isn't a terminal (piped, redirected, CI), it prints one line per
 node as it finishes instead. The display lives in `harness/src/progress.py`.
 
-Each run writes `harness/output/runs/<run_id>/`:
+Each run writes `harness/output/runs/<run_id>/`, laid out by stage (the default)
+or by frame:
 - `report.md` — status, params used, timings, failures, baseline comparison
 - `conditions.json` — the conditions the run used
 
 ## Output layout
 
-One folder per node, named
+**By stage** (`"layout": "stages"`, the default): one folder per node, named
 `<step>_<node>` so they sort in run order (nodes that don't depend on each other
 share a step). Each holds what the stage wrote plus `log.txt`, what it printed.
 
@@ -40,8 +42,29 @@ runs/<run_id>/
   ...
 ```
 
-Baseline comparison also works against runs made before this layout, which kept
-results in `<node>/output/`.
+**By frame** (`"layout": "frames"` or `--layout frames`): one folder per frame,
+holding everything every stage produced for it, in a subfolder per stage. It also
+turns on every stage's preview images (`save_previews` / `save_images`), unless the
+conditions file's `params` set them.
+
+```
+runs/<run_id>/
+  frames/recording_oct_5/frame_001800/
+    01_extract_frames/frame_001800.jpg
+    02_segment_windows/windows.csv, annotated_frame_001800.jpg, ...
+    03_ecg/ecg_summary.csv, r_peaks.csv, frame_001800_ecg_overlay.png, ...
+    03_measure_diameter/diameters.csv, frame_001800_cursor_preview.png, ...
+  shared/<step>_<node>/   results not tied to one frame (e.g. a CSV with no rows)
+  logs/<step>_<node>.txt
+```
+
+The frames are the images the first stage (`extract_frames`) writes. A stage's
+CSV is split by its `image` column, so each frame folder gets only its own rows; any
+other file goes to the frame whose name it contains (`frame_001800_ecg_overlay.png`).
+Stages run exactly as in the stage layout and the results are moved into frame
+folders afterwards, so the two layouts hold the same results. Baseline comparison
+works between runs of either layout (and runs made before this layout, with
+`<node>/output/`).
 
 ## Conditions files
 
@@ -70,6 +93,7 @@ Only `pipeline` is required. Paths are relative to the repo root.
 | `params` | none | per-node param overrides, `{"node": {"param": value}}`. `null` means `None`, e.g. `"fps": null` saves every frame. |
 | `compare_to` | `"baseline"` | baseline name or run id to compare against |
 | `fail_on_diff` | `false` | exit with status 2 if any output differs from it |
+| `layout` | `"stages"` | `"stages"`: a folder per stage; `"frames"`: a folder per frame, with previews on (see [Output layout](#output-layout)) |
 
 Unknown keys, unknown node names, unreadable times or an `end` before `start`
 stop the run before anything executes.
@@ -102,6 +126,9 @@ Every run re-runs every stage. If a stage fails, the stages downstream of it are
      If the node has several inputs, a directory with one entry per input,
      named after the upstream node.
    - `output`: an existing, empty directory to write into.
+   - Name per-frame files after the frame (e.g. `{frame stem}_overlay.png`, in the
+     frame's subfolder) and key CSV rows by an `image` column, so the frames layout
+     can put them in the right frame folder.
    - Raise an exception on failure (don't call `sys.exit`).
    - Optional: accept `progress=None` and call `progress(done, total)` as you
      work (e.g. once per frame). The harness passes a function that drives the

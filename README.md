@@ -10,8 +10,9 @@ This repository contains small experiments for exploring ways to analyze Doppler
 |---|---|---|
 | Extract video frames | Save selected frames from one video or a directory of videos as image files. | [main.py](modules/extract_frames/src/main.py) · [README](modules/extract_frames/README.md) |
 | Segment display windows | Identify the ultrasound display mode, extract the B-mode and active lower window, and calculate B-mode scale metadata. | [main.py](modules/segment_windows/src/main.py) · [README](modules/segment_windows/README.md) |
-| ECG trace and R-peak candidates | Extract the green ECG trace from a screenshot and find image-based R-peak candidates. | [ecg.ipynb](modules/ecg/scratch/ecg.ipynb) · [README](modules/ecg/README.md) |
-| Doppler waveform and envelope | Extract the white spectral Doppler waveform and its upper envelope in pixel coordinates. | [waveform.ipynb](modules/doppler_waveform/scratch/waveform.ipynb) · [README](modules/doppler_waveform/README.md) |
+| ECG trace and R-peak candidates | Extract the green ECG trace from a screenshot and find image-based R-peak candidates. | [main.py](modules/ecg/src/main.py) · [README](modules/ecg/README.md) |
+| Doppler waveform and envelope | Extract the white spectral Doppler waveform and its brightness-weighted envelope in pixel coordinates. | [main.py](modules/doppler_waveform/src/main.py) · [README](modules/doppler_waveform/README.md) |
+| Velocity axis and parameters | Read the spectral Doppler velocity axis by OCR and fit cm/s per pixel; read the acquisition-parameter panel. | [main.py](modules/scale_ocr/src/main.py) · [README](modules/scale_ocr/README.md) |
 | Circular vessel candidates | Detect possible circular vessel cross-sections in B-mode crops using classical image-processing methods. | [main.py](modules/detect_circular_vessels/src/main.py) · [README](modules/detect_circular_vessels/README.md) |
 | Cursor-anchored lumen candidates | Use the Doppler cursor to anchor a search for dark lumen candidates and compare their pixel widths across thresholds. | [main.py](modules/measure_diameter/src/main.py) · [README](modules/measure_diameter/README.md) |
 
@@ -43,7 +44,7 @@ Activation makes `python` and `pip` use the environment in `.venv`, keeping this
 python -m pip install -r requirements.txt
 ```
 
-The libraries in `requirements.txt` provide the shared image-processing, numerical, OCR, and notebook tools used by the experiments. The versions are pinned so contributors can use a consistent set of dependencies. The `segment_windows` experiment also requires the **Tesseract OCR application** to be installed separately and available on `PATH`; installing `pytesseract` from `requirements.txt` alone does not install Tesseract. On Windows, this can be installed from: https://github.com/UB-Mannheim/tesseract/wiki.
+The libraries in `requirements.txt` provide the shared image-processing, numerical, OCR, and notebook tools used by the experiments. The versions are pinned so contributors can use a consistent set of dependencies. The `segment_windows` and `scale_ocr` experiments also require the **Tesseract OCR application** to be installed separately and available on `PATH`; installing `pytesseract` from `requirements.txt` alone does not install Tesseract. On Windows, this can be installed from: https://github.com/UB-Mannheim/tesseract/wiki.
 
 ## Run an experiment
 
@@ -55,8 +56,9 @@ This page provides a quick setup and run summary. For a more detailed explanatio
 | Segment display windows | `python modules/segment_windows/src/main.py` |
 | Circular vessel candidates | `python modules/detect_circular_vessels/src/main.py` |
 | Cursor-anchored lumen candidates | `python modules/measure_diameter/src/main.py` |
-| ECG trace and R-peak candidates | Open [ecg.ipynb](modules/ecg/scratch/ecg.ipynb) in VS Code, select the `.venv` Python environment as the notebook kernel, and run the notebook cells. |
-| Doppler waveform and envelope | Open [waveform.ipynb](modules/doppler_waveform/scratch/waveform.ipynb) in VS Code, select the `.venv` Python environment as the notebook kernel, and run the notebook cells. |
+| ECG trace and R-peak candidates | `python modules/ecg/src/main.py` |
+| Doppler waveform and envelope | `python modules/doppler_waveform/src/main.py` |
+| Velocity axis and parameters | `python modules/scale_ocr/src/main.py` |
 
 The image-analysis scripts accept optional input filenames or paths; some also accept command-line options. Run a script with `--help` to see its options. For example:
 

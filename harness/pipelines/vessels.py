@@ -1,7 +1,9 @@
-"""Vessel pipeline: video -> frames -> window coordinates -> vessel detection + lumen width.
+"""Vessel pipeline: video -> frames -> window coordinates -> vessel detection + lumen width,
+plus the spectral-view readings (ECG, Doppler waveform, velocity axis).
 
     extract_frames ─► segment_windows ─► detect_circular_vessels (+ _hough)
           │                (windows.csv)  measure_diameter
+          │                               ecg, doppler_waveform, scale_ocr
           └───────────── frames ──────────┘
 
 segment_windows writes only coordinates (windows.csv); the stages after it take
@@ -28,6 +30,9 @@ detect_circular_vessels = load_stage("detect_circular_vessels")
 # A second, separate copy of the stage with its METHOD setting switched to Hough.
 detect_circular_vessels_hough = load_stage("detect_circular_vessels")
 detect_circular_vessels_hough.METHOD = "hough"
+ecg = load_stage("ecg")
+doppler_waveform = load_stage("doppler_waveform")
+scale_ocr = load_stage("scale_ocr")
 
 pipeline = p = Pipeline("vessels")
 
@@ -68,4 +73,31 @@ diameters = p.node(
     inputs=[frames, windows],
     params={"save_previews": False},
     compare=csv_diff("diameters.csv", key="image", tolerance=0.5),
+)
+
+# The spectral-view stages below use windows.csv only to pick the frames that
+# have a spectral window; they read fixed regions of the full frame.
+
+# Green ECG trace and R-peak candidates.
+ecg_trace = p.node(
+    "ecg", ecg.run,
+    inputs=[frames, windows],
+    params={"save_previews": False},
+    compare=csv_diff("r_peaks.csv", key="image", tolerance=0.5),
+)
+
+# White spectral waveform and its brightness-weighted envelope, in pixels.
+envelope = p.node(
+    "doppler_waveform", doppler_waveform.run,
+    inputs=[frames, windows],
+    params={"save_previews": False},
+    compare=csv_diff("envelope.csv", key=("image", "x"), tolerance=0.5),
+)
+
+# Velocity-axis fit (cm/s per pixel) and the parameter panel, by OCR.
+velocity_scale = p.node(
+    "scale_ocr", scale_ocr.run,
+    inputs=[frames, windows],
+    params={"save_previews": False},
+    compare=csv_diff("velocity_scale.csv", key="image", tolerance=0.01),
 )

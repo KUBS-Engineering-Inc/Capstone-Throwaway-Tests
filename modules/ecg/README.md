@@ -1,40 +1,36 @@
 # ECG
 
-Extracts the green ECG trace from a Terason screenshot as pixel coordinates and finds image-based R-peak candidates. The code is in the `ecg.ipynb` notebook.
+Extracts the green ECG trace from a Terason screenshot as pixel coordinates and finds image-based R-peak candidates. The code is in `src/`; `scratch/ecg.ipynb` is the notebook it was developed in.
 
 ## How to Run
 
-### ECG waveform and R-peak candidates
+From the repository root, with the virtual environment activated:
 
-Open `ecg.ipynb`. By default, it reads `data/ecg/input/ecg_wave.png` and
-saves results to `data/ecg/output/`.
-
-The test cell calls:
-
-``` python
-results = main(
-    input_path=ecg_img_path,
-    output_path=output_dir,
-)
+```bash
+python modules/ecg/src/main.py
 ```
 
-The same function can be called with another image and output folder:
+This processes every image in `data/ecg/input/` and writes to `data/ecg/output/`. Append an image path, a folder (searched recursively) or a filename inside `data/ecg/input/` to process something else. A second argument sets the output folder, and `--no-previews` writes only the CSVs.
 
-``` python
-from pathlib import Path
-
-results = main(
-    input_path=Path("data/ecg/input/ecg_wave.png"),
-    output_path=Path("data/ecg/output"),
-)
-```
+From Python, or from the harness, call `run(input, output, save_previews=True, progress=None)`. The harness's vessels pipeline runs it on the extracted video frames with `segment_windows`' `windows.csv`, processing only the frames that have a spectral window, with `save_previews=False`.
 
 ## What it Does
 
-### ECG waveform and R-peak extraction
+**Input**: One of:
+- Full screenshots: an image, a folder of images, or a filename inside `data/ecg/input` (with no argument, every image there).
+- Full frames plus `segment_windows`' `windows.csv`: a folder holding `windows.csv` next to the frames, or a folder with two subfolders, one holding `windows.csv` and the other the frames (the layout the harness passes). Only frames with a `spectral` window are processed; the ECG is read from the full frame, not the window crop.
 
-The ECG notebook extracts the green ECG trace from a Terason screenshot,
-returns its y-coordinates, and identifies image-based R-peak candidates.
+**Output**: Written to the output folder, one set of rows per image:
+
+| File | Contents |
+|---|---|
+| `ecg_summary.csv` | `image`, `ecg_present`, `coverage`, `n_r_peaks` |
+| `ecg_trace.csv` | `image`, `x`, `y`: one row per column of the ECG region. `y` is blank where no trace was found. |
+| `r_peaks.csv` | `image`, `x`, `y`: one row per R-peak candidate |
+
+Coordinates are full-frame pixels (origin top left). Unless `--no-previews` is given, it also writes per image `{image}_ecg_mask.png` (detected green pixels in the ECG region), `{image}_ecg_overlay.png` (trace and candidates over the screenshot) and `{image}_ecg_graph.png` (the trace on its own).
+
+### Execution
 
 1.  **Load and crop:** Read the screenshot and crop the ECG ROI. The ROI
     is defined relative to a 1024 × 768 reference image and scaled to
@@ -48,61 +44,22 @@ returns its y-coordinates, and identifies image-based R-peak candidates.
     screenshot.
 4.  **Check trace coverage:** Calculate the fraction of ROI columns
     containing green pixels. If coverage is below `MIN_TRACE_COVERAGE`
-    (70% by default), mark the ECG as absent and set the y-coordinate
-    array to `NaN`.
-5.  **Fill missing coordinates when coverage passes:** If coverage is
-    sufficient, `np.interp()` fills missing columns. In the current
-    implementation this fills all missing columns, including long
-    internal gaps and leading/trailing columns; it is not limited to
-    short gaps.
-6.  **Detect R-peak candidates:** Apply a median filter for detection,
-    then invert the y-coordinate series relative to its median so upward
-    ECG deflections become numerical maxima. `scipy.signal.find_peaks()`
-    applies prominence, distance, and width constraints.
+    (70% by default), mark the ECG as absent and set every y-coordinate
+    to `NaN`.
+5.  **Leave gaps empty:** Columns without green pixels (such as the
+    sweep refresh bar) stay `NaN`; nothing is interpolated.
+6.  **Detect R-peak candidates:** Split the trace into its unbroken
+    segments and process each separately, so a gap never joins two parts
+    of the trace or produces a peak on a beat cut off by the gap. Within
+    a segment, apply a median filter for detection, then invert the
+    y-coordinates relative to the trace's median so upward ECG
+    deflections become maxima. `scipy.signal.find_peaks()` applies
+    prominence, distance, and width constraints.
 7.  **Refine candidate positions:** For each candidate, search within ±5
-    samples in the unsmoothed extracted ECG series and select the
-    smallest y-coordinate.
-8.  **Save results:** Write ECG coordinate CSV files, the green-pixel
-    mask, a standalone ECG graph, and an overlay on the original
-    screenshot with candidate peaks marked.
-
-The `main()` function returns:
-
--   `ecg_mask`: binary mask of detected green pixels in the cropped ECG
-    ROI.
--   `ecg_coords`: ECG `(x, y)` coordinates in full-image pixel
-    coordinates.
--   `ecg_y`: ECG y-coordinate series.
--   `valid_columns`: Boolean array marking columns where green pixels
-    were directly detected, before interpolation.
--   `ecg_present`: whether the green-pixel coverage threshold was met.
--   `r_peaks_x`: full-image x-coordinates of R-peak candidates.
--   `r_peaks_y`: y-coordinates of R-peak candidates.
--   `coverage`: fraction of ECG ROI columns containing detected green
-    pixels.
-
-Files saved in `data/ecg/output/`:
-
-  -----------------------------------------------------------------------
-  File                                Contents
-  ----------------------------------- -----------------------------------
-  `ecg_y.csv`                         ECG y-coordinate for each ROI
-                                      column
-
-  `ecg_coordinates.csv`               ECG coordinates (`x_pixel`,
-                                      `y_pixel`)
-
-  `r_peaks.csv`                       Detected R-peak candidate
-                                      coordinates
-
-  `ecg_mask.png`                      Binary mask of detected green
-                                      pixels
-
-  `ecg_overlay.png`                   Original screenshot with ECG trace
-                                      and candidates overlaid
-
-  `ecg_graph.png`                     Standalone ECG coordinate graph
-  -----------------------------------------------------------------------
+    samples in the unsmoothed segment and select the smallest
+    y-coordinate.
+8.  **Save results:** Add the image's rows to the CSVs and, with
+    previews, write the mask, overlay and graph.
 
 ## Design Decision
 
@@ -121,6 +78,9 @@ Files saved in `data/ecg/output/`:
 -   **Upper-edge coordinate selection:** The smallest green-pixel
     y-coordinate is selected in each column. This follows the upper edge
     of the rendered trace, not necessarily its centreline.
+-   **No interpolation across gaps:** Missing columns are left empty
+    rather than filled with made-up coordinates, and peaks are found per
+    unbroken segment.
 -   **Smoothing only for detection:** A small median filter reduces
     coordinate fluctuations before peak detection. The extracted
     unsmoothed coordinates are retained for refining candidate
@@ -133,12 +93,11 @@ Files saved in `data/ecg/output/`:
     width limits reject some small fluctuations and implausibly shaped
     candidates. Each candidate is then refined locally using the
     smallest unsmoothed y-coordinate.
--   **Two-peak safeguard implementation note:** The notebook defines
-    `MIN_PRESENT_PEAKS = 2` and the detector docstring mentions a
-    two-peak safeguard, but the uploaded `detect_r_peaks()`
-    implementation does not currently check that at least two candidates
-    were found. As written, it can return one candidate. Add an explicit
-    candidate-count check if the two-peak requirement is intended.
+-   **Two-peak safeguard implementation note:** `config.py` defines
+    `MIN_PRESENT_PEAKS = 2`, but `detect_r_peaks()` does not currently
+    check that at least two candidates were found. As written, it can
+    return one candidate. Add an explicit candidate-count check if the
+    two-peak requirement is intended.
 -   **Not a clinical interpretation:** R-peaks are image-shape
     candidates only, not clinically validated detections or a diagnostic
     assessment.

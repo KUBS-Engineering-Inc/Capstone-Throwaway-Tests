@@ -6,18 +6,70 @@ against a baseline.
 ## Usage
 
 ```
-source .venv/bin/activate                                       # from the repo root
-python harness/src/main.py run harness/pipelines/vessels.py     # run + compare to "baseline" if set
-python harness/src/main.py baseline <run_id>                    # make a run the baseline
-python harness/src/main.py order harness/pipelines/vessels.py   # list stages in run order
+source .venv/bin/activate                                          # from the repo root
+python harness/src/main.py run harness/conditions/vessels_section.json  # run under a conditions file
+python harness/src/main.py run harness/pipelines/vessels.py        # run the pipeline as defined
+python harness/src/main.py baseline <run_id>                       # make a run the baseline
+python harness/src/main.py order harness/pipelines/vessels.py      # list stages in run order
 ```
 
-Flags for `run`: `--run-id NAME`, `--compare-to RUN_OR_BASELINE`, `--fail-on-diff`.
-Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `--fail-on-diff`).
+`run` also takes `--run-id NAME` (default: a timestamp).
+Exit status: 0 OK, 1 a node failed, 2 output differs from baseline (with `"fail_on_diff": true`).
+
+While it runs, the terminal shows a live row per node: a spinner and timer while
+it runs, a progress bar with done/total and time left for stages that report
+progress, and ✓ / ✗ / - (skipped) when done, with the error or reason cut to fit.
+When the output isn't a terminal (piped, redirected, CI), it prints one line per
+node as it finishes instead. The display lives in `harness/src/progress.py`.
 
 Each run writes `harness/output/runs/<run_id>/`:
 - `<node>/output/` — what the stage wrote; `<node>/log.txt` — what it printed
-- `report.md` — status, timings, failures, baseline comparison
+- `report.md` — status, params used, timings, failures, baseline comparison
+- `conditions.json` — the conditions the run used
+
+## Conditions files
+
+A conditions file is JSON that says what to run and how. Keep them in
+`harness/conditions/`. Example (`harness/conditions/vessels_section.json`):
+
+```json
+{
+  "pipeline": "harness/pipelines/vessels.py",
+  "start": "1:00",
+  "end": "1:10",
+  "params": {
+    "extract_frames": {"fps": 1}
+  },
+  "compare_to": "baseline",
+  "fail_on_diff": false
+}
+```
+
+Only `pipeline` is required. Paths are relative to the repo root.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `pipeline` | — | pipeline `.py` file to run |
+| `start`, `end` | whole video | run on a section of the video; seconds (`75`, `75.5`) or `"m:ss"` (`"1:15"`). Either can be left out. Passed to every node whose stage takes `start`/`end` params (today: `extract_frames`). |
+| `params` | none | per-node param overrides, `{"node": {"param": value}}`. `null` means `None`, e.g. `"fps": null` saves every frame. |
+| `compare_to` | `"baseline"` | baseline name or run id to compare against |
+| `fail_on_diff` | `false` | exit with status 2 if any output differs from it |
+
+Unknown keys, unknown node names, unreadable times or an `end` before `start`
+stop the run before anything executes.
+
+### Running on a section of the video
+
+Frames keep their index in the full video (`frame_001800.jpg` is 60 s in), so
+section results line up with a full run. Compared against a full-video baseline,
+the frames outside the section show up as "only in other"; to compare sections,
+baseline one under its own name and point `compare_to` at it:
+
+```
+python harness/src/main.py run harness/conditions/vessels_section.json --run-id s60
+python harness/src/main.py baseline s60 --name s60
+# then set "compare_to": "s60" in the conditions file
+```
 
 Every run re-runs every stage. If a stage fails, the stages downstream of it are skipped.
 
@@ -35,17 +87,23 @@ Every run re-runs every stage. If a stage fails, the stages downstream of it are
      named after the upstream node.
    - `output`: an existing, empty directory to write into.
    - Raise an exception on failure (don't call `sys.exit`).
+   - Optional: accept `progress=None` and call `progress(done, total)` as you
+     work (e.g. once per frame). The harness passes a function that drives the
+     node's progress bar; standalone runs pass nothing.
    - Be deterministic: same input + params -> same output.
 3. Write results the next stage (and comparators) can read — ideally a CSV keyed
    by image name, plus any images.
+   A stage that works on one display window (e.g. the B-mode view) takes
+   `inputs=[frames, windows]` and crops each frame using `segment_windows`'
+   `windows.csv`, as `detect_circular_vessels` and `measure_diameter` do.
 4. Add any new third-party dependency, pinned, to the root `requirements.txt`.
 5. Load the stage and add a node in the pipeline file:
    ```python
    crop_view = load_stage("crop_view")   # imports modules/crop_view/src/main.py
    crops = p.node("crop_view", crop_view.run, inputs=[frames], compare=files_diff())
    ```
-   Helper files next to `main.py` can be imported normally (`from utils import x`);
-   give them names that won't clash with other stages' helpers.
+   Helper files next to `main.py` can be imported normally (`from config import x`).
+   Each stage gets its own copies, so two stages can both have a `config.py`.
 
 ## Comparators
 

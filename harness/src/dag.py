@@ -14,6 +14,7 @@ Each run writes, under the harness output directory:
 import contextlib
 import graphlib
 import importlib.util
+import inspect
 import sys
 import time
 import traceback
@@ -23,6 +24,7 @@ from pathlib import Path
 from typing import Callable
 
 from compare import Comparison
+from progress import Display
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/dag.py -> repo root
 MODULES_DIR = REPO_ROOT / "modules"
@@ -32,16 +34,25 @@ def load_stage(name, root=MODULES_DIR):
     """Import the stage modules/<name>/src/main.py as a module called `name`.
 
     Every stage's code is src/main.py, so stages are loaded by file path under
-    their folder name rather than imported as `main`. The stage's src/ is put on
-    sys.path so it can import helper files next to main.py.
+    their folder name rather than imported as `main`. The stage's src/ is on
+    sys.path while it loads so it can import helper files next to main.py.
+    Those helpers are then dropped from the module cache, so two stages can
+    each have their own `config.py` without one getting the other's.
     """
-    src = Path(root) / name / "src"
-    if str(src) not in sys.path:
-        sys.path.insert(0, str(src))
-    spec = importlib.util.spec_from_file_location(name, src / "main.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
+    src = (Path(root) / name / "src").resolve()
+    before = set(sys.modules)
+    sys.path.insert(0, str(src))
+    try:
+        spec = importlib.util.spec_from_file_location(name, src / "main.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(src))
+        for mod in set(sys.modules) - before - {name}:
+            file = getattr(sys.modules[mod], "__file__", None)
+            if file and Path(file).resolve().is_relative_to(src):
+                del sys.modules[mod]
     return module
 
 
@@ -88,15 +99,18 @@ class Pipeline:
         run_dir.mkdir(parents=True)  # fails if the run already exists
         order = graphlib.TopologicalSorter({n: n.upstream for n in self.nodes.values()}).static_order()
 
+        order = list(order)
         status, notes = {}, {}
-        print(f"Run {run_id}: {len(self.nodes)} node(s)")
-        for node in order:
-            failed_up = [u.name for u in node.upstream if status[u.name] != "ok"]
-            if failed_up:
-                status[node.name], notes[node.name] = "skipped", f"upstream failed: {', '.join(failed_up)}"
-            else:
-                status[node.name], notes[node.name] = self._execute(node, run_dir)
-            print(f"  {'✓' if status[node.name] == 'ok' else '✗'} {node.name}: {status[node.name]} {notes[node.name]}")
+        with Display(f"Run {run_id} — pipeline {self.name}: {len(self.nodes)} node(s)",
+                     [n.name for n in order]) as display:
+            for node in order:
+                failed_up = [u.name for u in node.upstream if status[u.name] != "ok"]
+                if failed_up:
+                    status[node.name], notes[node.name] = "skipped", f"upstream failed: {', '.join(failed_up)}"
+                else:
+                    progress = display.start(node.name)
+                    status[node.name], notes[node.name] = self._execute(node, run_dir, progress)
+                display.finish(node.name, status[node.name], notes[node.name])
 
         comparisons = {}
         for node in self.nodes.values():
@@ -107,11 +121,11 @@ class Pipeline:
                 except Exception as e:
                     comparisons[node.name] = Comparison(False, f"comparison error: {e!r}")
 
-        (run_dir / "report.md").write_text(_report(self.name, run_id, status, notes, baseline, comparisons))
+        (run_dir / "report.md").write_text(_report(self, run_id, status, notes, baseline, comparisons))
         print(f"Report: {run_dir / 'report.md'}")
         return run_dir, status, comparisons
 
-    def _execute(self, node, run_dir):
+    def _execute(self, node, run_dir, progress=None):
         out = run_dir / node.name / "output"
         out.mkdir(parents=True)
         paths = [run_dir / i.name / "output" if isinstance(i, Node) else i for i in node.inputs]
@@ -121,11 +135,15 @@ class Pipeline:
             node_input.mkdir()
             for i, p in zip(node.inputs, paths):
                 (node_input / (i.name if isinstance(i, Node) else p.name)).symlink_to(p.resolve())
+        params = dict(node.params)
+        # A stage that accepts `progress` gets a progress(done, total) function to call as it works.
+        if progress and "progress" not in params and "progress" in inspect.signature(node.fn).parameters:
+            params["progress"] = progress
         t0 = time.time()
         with open(run_dir / node.name / "log.txt", "w") as log, \
                 contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             try:
-                node.fn(node_input, out, **node.params)
+                node.fn(node_input, out, **params)
             except Exception:
                 traceback.print_exc()
                 error = traceback.format_exc().strip().splitlines()[-1]
@@ -152,8 +170,8 @@ def set_baseline(out_root, run_id, name="baseline"):
 
 
 def _report(pipeline, run_id, status, notes, baseline, comparisons):
-    lines = [f"# Run {run_id} — pipeline `{pipeline}`", "", "| node | status | |", "|---|---|---|"]
-    lines += [f"| {n} | {s} | {notes[n]} |" for n, s in status.items()]
+    lines = [f"# Run {run_id} — pipeline `{pipeline.name}`", "", "| node | status | params | |", "|---|---|---|---|"]
+    lines += [f"| {n} | {s} | {_params(pipeline.nodes[n].params)} | {notes[n]} |" for n, s in status.items()]
     if comparisons:
         lines += ["", f"## Compared to `{baseline.name}`", ""]
         for name, c in comparisons.items():
@@ -162,3 +180,7 @@ def _report(pipeline, run_id, status, notes, baseline, comparisons):
             if len(c.details) > 20:
                 lines.append(f"    - … {len(c.details) - 20} more")
     return "\n".join(lines) + "\n"
+
+
+def _params(params):
+    return ", ".join(f"{k}={v!r}" for k, v in params.items()) or "—"

@@ -1,0 +1,10 @@
+{
+  "pipeline": "harness/pipelines/vessels.py",
+  "start": "1:00",
+  "end": "1:10",
+  "params": {
+    "extract_frames": {"fps": 1}
+  },
+  "compare_to": "baseline",
+  "fail_on_diff": false
+}

@@ -2,11 +2,16 @@
 
 Usage:
     python modules/extract_frames/src/main.py [INPUT] [OUTPUT] [--every N] [--fps F] [--ext jpg|png]
+                                              [--start SEC] [--end SEC]
 
 INPUT is a video file or a directory of videos (default: data/extract_frames/input/).
 OUTPUT is a directory (default: data/extract_frames/output/). Frames from each video go to
 OUTPUT/<video name>/, e.g.
 input/recording_oct_5.mp4 -> output/recording_oct_5/frame_000000.jpg
+
+--start/--end limit extraction to a section of each video (in seconds). Frames keep
+their index in the full video, so a section gives the same files as a full run would
+for that time range.
 """
 import argparse
 from pathlib import Path
@@ -17,7 +22,7 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "extract_frames"  # mo
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
-def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg"):
+def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg", start=None, end=None, progress=None):
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {video_path}")
@@ -27,12 +32,24 @@ def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg"):
     if target_fps and src_fps:
         every = max(1, round(src_fps / target_fps))
 
+    if (start or end) and not src_fps:
+        raise RuntimeError(f"Can't select a time range: {video_path} reports no frame rate")
+    first = round(start * src_fps) if start else 0
+    stop = round(end * src_fps) if end is not None else None  # exclusive
+    to_read = max(0, min(stop if stop is not None else total, total) - first)
+    if first:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"{video_path}: {total} frames @ {src_fps:.2f} fps -> saving every {every} frame(s) to {out_dir}/")
+    section = f" from frame {first}" + (f" to {stop}" if stop is not None else "") if first or stop is not None else ""
+    print(f"{video_path}: {total} frames @ {src_fps:.2f} fps -> saving every {every} frame(s){section} to {out_dir}/")
 
-    idx = saved = 0
-    while True:
+    # Count frames from the start of the video so names (and the every-Nth choice)
+    # match a full run.
+    idx = first
+    saved = 0
+    while stop is None or idx < stop:
         ok, frame = cap.read()
         if not ok:
             break
@@ -40,9 +57,11 @@ def extract_frames(video_path, out_dir, every=1, target_fps=None, ext="jpg"):
             cv2.imwrite(str(out_dir / f"frame_{idx:06d}.{ext}"), frame)
             saved += 1
         idx += 1
+        if progress:
+            progress(idx - first, to_read)
 
     cap.release()
-    print(f"Done: saved {saved} of {idx} frames.")
+    print(f"Done: saved {saved} of {idx - first} frames read.")
     return saved
 
 
@@ -55,10 +74,15 @@ def list_videos(path):
     raise FileNotFoundError(f"Input not found: {path}")
 
 
-def run(input, output, every=1, fps=None, ext="jpg"):
+def run(input, output, every=1, fps=None, ext="jpg", start=None, end=None, progress=None):
     """Extract frames from every video under `input` into `output`/<video name>/.
-    Returns the total number of frames saved."""
-    return sum(extract_frames(video, Path(output) / video.stem, every, fps, ext) for video in list_videos(input))
+    `start`/`end` (seconds) limit it to a section of each video.
+    `progress(done, total)`, if given, is called with frames read so far in the
+    current video. Returns the total number of frames saved."""
+    if start is not None and end is not None and end <= start:
+        raise ValueError(f"end ({end}) must be after start ({start})")
+    return sum(extract_frames(video, Path(output) / video.stem, every, fps, ext, start, end, progress)
+               for video in list_videos(input))
 
 
 def main():
@@ -68,8 +92,10 @@ def main():
     p.add_argument("--every", type=int, default=1, help="save every Nth frame (default: 1)")
     p.add_argument("--fps", type=float, help="target frames per second to save (overrides --every)")
     p.add_argument("--ext", default="jpg", choices=["jpg", "png"], help="image format")
+    p.add_argument("--start", type=float, help="start of the section to extract, in seconds (default: 0)")
+    p.add_argument("--end", type=float, help="end of the section to extract, in seconds (default: end of video)")
     a = p.parse_args()
-    run(a.input, a.output, every=a.every, fps=a.fps, ext=a.ext)
+    run(a.input, a.output, every=a.every, fps=a.fps, ext=a.ext, start=a.start, end=a.end)
 
 
 if __name__ == "__main__":

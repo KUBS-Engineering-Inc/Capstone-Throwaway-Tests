@@ -63,7 +63,7 @@ def csv_diff(filename, key, columns=None, tolerance=0.0):
 
 
 def files_diff(pattern="**/*"):
-    """Compare the files a stage writes by name and content hash."""
+    """Compare the files a stage writes by name and content hash (not its log.txt)."""
 
     def compare(current: Path, other: Path) -> Comparison:
         cur, oth = _hashes(current, pattern), _hashes(other, pattern)
@@ -88,8 +88,11 @@ def _read(path, keys):
 
 
 def _hashes(root, pattern):
+    """{relative path: sha256} of the files matching `pattern`, leaving out the
+    stage's log.txt, which the harness keeps in the same folder."""
+    root = Path(root)
     return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(Path(root).glob(pattern)) if p.is_file()}
+            for p in sorted(root.glob(pattern)) if p.is_file() and p != root / "log.txt"}
 
 
 def _equal(a, b, tol):

@@ -1,21 +1,23 @@
 """A minimal DAG runner: run each stage in order, then compare against a baseline.
 
 A node wraps a stage's `run(input, output, **params)` function. Its input is a
-path (file or directory) or the output directory of an upstream node. A node
-with several inputs receives a directory holding one link per input, named
-after the upstream node (or the path's file name).
+path (file or directory) or the output folder of an upstream node. A node
+with several inputs receives a temporary directory holding one link per input,
+named after the upstream node (or the path's file name).
 
 Each run writes, under the harness output directory:
-    runs/<run_id>/<node>/output/   what the stage wrote
-    runs/<run_id>/<node>/log.txt   everything the stage printed
+    runs/<run_id>/<step>_<node>/   what the stage wrote, plus log.txt (everything it printed)
     runs/<run_id>/report.md        status, timings, failures, comparisons
     baselines/<name>               link to the run used as that baseline
+<step> is the node's step in run order (see Pipeline.steps), two digits.
 """
 import contextlib
 import graphlib
 import importlib.util
 import inspect
+import shutil
 import sys
+import tempfile
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -24,6 +26,7 @@ from pathlib import Path
 from typing import Callable
 
 from compare import Comparison
+from layout import LOG_NAME, stage_dir
 from progress import Display
 
 REPO_ROOT = Path(__file__).resolve().parents[2]  # harness/src/dag.py -> repo root
@@ -90,6 +93,10 @@ class Pipeline:
             step[name] = 1 + max((step[u.name] for u in node.upstream), default=0)
         return sorted(((step[n], node) for n, node in self.nodes.items()), key=lambda s: s[0])
 
+    def folders(self):
+        """{node name: its folder name in a run, <step>_<node>}."""
+        return {node.name: f"{step:02d}_{node.name}" for step, node in self.steps()}
+
     def run(self, out_root, run_id=None, baseline=None):
         """Run every node in dependency order, then compare each node that has a
         `compare` against the same node in `baseline` (a run directory).
@@ -97,42 +104,57 @@ class Pipeline:
         run_id = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
         run_dir = Path(out_root) / "runs" / run_id
         run_dir.mkdir(parents=True)  # fails if the run already exists
-        order = graphlib.TopologicalSorter({n: n.upstream for n in self.nodes.values()}).static_order()
+        order = list(graphlib.TopologicalSorter({n: n.upstream for n in self.nodes.values()}).static_order())
+        folders = self.folders()
+        dirs = {name: run_dir / folder for name, folder in folders.items()}
+        log_paths = {name: f"{folder}/{LOG_NAME}" for name, folder in folders.items()}
 
-        order = list(order)
         status, notes = {}, {}
-        with Display(f"Run {run_id} — pipeline {self.name}: {len(self.nodes)} node(s)",
-                     [n.name for n in order]) as display:
+        # Logs and multi-input links stay out of the stage folders while the
+        # pipeline runs, so no stage sees another stage's log in its input.
+        with tempfile.TemporaryDirectory(prefix=f"harness-{run_id}-") as tmp, \
+                Display(f"Run {run_id} — pipeline {self.name}: {len(self.nodes)} node(s)",
+                        [n.name for n in order]) as display:
+            tmp = Path(tmp)
             for node in order:
                 failed_up = [u.name for u in node.upstream if status[u.name] != "ok"]
                 if failed_up:
                     status[node.name], notes[node.name] = "skipped", f"upstream failed: {', '.join(failed_up)}"
                 else:
                     progress = display.start(node.name)
-                    status[node.name], notes[node.name] = self._execute(node, run_dir, progress)
+                    status[node.name], notes[node.name] = self._execute(
+                        node, dirs, tmp, run_dir / ".logs", log_paths[node.name], progress)
                 display.finish(node.name, status[node.name], notes[node.name])
 
-        comparisons = {}
-        for node in self.nodes.values():
-            base = baseline / node.name / "output" if baseline else None
-            if node.compare and status[node.name] == "ok" and base and base.is_dir():
+            comparisons = {}
+            for node in self.nodes.values():
+                if not (node.compare and status[node.name] == "ok" and baseline):
+                    continue
                 try:
-                    comparisons[node.name] = node.compare(run_dir / node.name / "output", base)
+                    base = stage_dir(baseline, node.name)
+                    if base is not None:
+                        comparisons[node.name] = node.compare(dirs[node.name], base)
                 except Exception as e:
                     comparisons[node.name] = Comparison(False, f"comparison error: {e!r}")
+
+        # Logs wait in .logs/ until every stage has run (and stay there if the run crashes).
+        for name, d in dirs.items():
+            if (run_dir / ".logs" / f"{name}.txt").is_file():
+                shutil.move(run_dir / ".logs" / f"{name}.txt", d / LOG_NAME)
+        shutil.rmtree(run_dir / ".logs", ignore_errors=True)
 
         (run_dir / "report.md").write_text(_report(self, run_id, status, notes, baseline, comparisons))
         print(f"Report: {run_dir / 'report.md'}")
         return run_dir, status, comparisons
 
-    def _execute(self, node, run_dir, progress=None):
-        out = run_dir / node.name / "output"
+    def _execute(self, node, dirs, tmp, log_dir, log_path, progress=None):
+        out = dirs[node.name]
         out.mkdir(parents=True)
-        paths = [run_dir / i.name / "output" if isinstance(i, Node) else i for i in node.inputs]
+        paths = [dirs[i.name] if isinstance(i, Node) else i for i in node.inputs]
         node_input = paths[0]
         if len(paths) > 1:
-            node_input = run_dir / node.name / "input"
-            node_input.mkdir()
+            node_input = tmp / "inputs" / node.name
+            node_input.mkdir(parents=True)
             for i, p in zip(node.inputs, paths):
                 (node_input / (i.name if isinstance(i, Node) else p.name)).symlink_to(p.resolve())
         params = dict(node.params)
@@ -140,14 +162,15 @@ class Pipeline:
         if progress and "progress" not in params and "progress" in inspect.signature(node.fn).parameters:
             params["progress"] = progress
         t0 = time.time()
-        with open(run_dir / node.name / "log.txt", "w") as log, \
+        log_dir.mkdir(exist_ok=True)
+        with open(log_dir / f"{node.name}.txt", "w") as log, \
                 contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             try:
                 node.fn(node_input, out, **params)
             except Exception:
                 traceback.print_exc()
                 error = traceback.format_exc().strip().splitlines()[-1]
-                return "failed", f"{error} (see {node.name}/log.txt)"
+                return "failed", f"{error} (see {log_path})"
         return "ok", f"{time.time() - t0:.1f}s"
 
 

@@ -23,9 +23,25 @@ When the output isn't a terminal (piped, redirected, CI), it prints one line per
 node as it finishes instead. The display lives in `harness/src/progress.py`.
 
 Each run writes `harness/output/runs/<run_id>/`:
-- `<node>/output/` — what the stage wrote; `<node>/log.txt` — what it printed
 - `report.md` — status, params used, timings, failures, baseline comparison
 - `conditions.json` — the conditions the run used
+
+## Output layout
+
+One folder per node, named
+`<step>_<node>` so they sort in run order (nodes that don't depend on each other
+share a step). Each holds what the stage wrote plus `log.txt`, what it printed.
+
+```
+runs/<run_id>/
+  01_extract_frames/recording_oct_5/frame_001800.jpg ...
+  02_segment_windows/windows.csv, log.txt
+  03_ecg/ecg_summary.csv, ecg_trace.csv, r_peaks.csv, log.txt
+  ...
+```
+
+Baseline comparison also works against runs made before this layout, which kept
+results in `<node>/output/`.
 
 ## Conditions files
 
@@ -109,7 +125,7 @@ Every run re-runs every stage. If a stage fails, the stages downstream of it are
 
 - `csv_diff(filename, key, columns=None, tolerance=0.0)` — rows matched by key;
   numeric values within `tolerance` count as equal.
-- `files_diff(pattern="**/*")` — files compared by name and content hash.
+- `files_diff(pattern="**/*")` — files compared by name and content hash (the stage's `log.txt` is left out).
 - Your own: any function `(current_dir, other_dir) -> Comparison(ok, summary, details)`.
 
 Use one as a node's `compare=` to check it against the baseline. To compare two
